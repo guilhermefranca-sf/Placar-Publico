@@ -1,1 +1,71 @@
+name: Atualizar e publicar o Placar Público
 
+on:
+  schedule:
+    - cron: "37 8 * * *"      # todo dia às 05:37 no horário de Brasília
+  workflow_dispatch:           # botão "Run workflow" na aba Actions
+    inputs:
+      forcar:
+        description: "Refazer tudo agora (TSE e Tesouro também)?"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths-ignore:
+      - "site/dados/**"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Guarda os dados do dia anterior. Assim, se uma fonte estiver fora do ar hoje,
+      # o site continua mostrando o último resultado bom em vez de ficar vazio.
+      - name: Recuperar dados anteriores
+        uses: actions/cache/restore@v4
+        with:
+          path: site/dados
+          key: dados-${{ github.run_id }}
+          restore-keys: dados-
+
+      - name: Atualizar os dados
+        run: |
+          if [ "${{ github.event.inputs.forcar }}" = "true" ]; then
+            node scripts/atualizar.mjs --forcar
+          else
+            node scripts/atualizar.mjs
+          fi
+
+      - name: Guardar os dados de hoje
+        uses: actions/cache/save@v4
+        with:
+          path: site/dados
+          key: dados-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Publicar
+        id: deploy
+        uses: actions/deploy-pages@v4
