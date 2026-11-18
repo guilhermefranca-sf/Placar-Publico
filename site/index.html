@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Placar Público</title>
+  <meta name="description" content="A nota de deputados, governadores, prefeitos e vereadores do Brasil, calculada só com dados oficiais abertos e atualizada todo dia.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%232a3f9b' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%232a3f9b'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="cx topo-in">
+      <a class="marca" href="#/">
+        <span class="marca-sinal" aria-hidden="true"></span>
+        Placar Público
+      </a>
+      <nav class="menu" aria-label="Principal">
+        <a href="#/" data-menu="inicio" aria-current="page">Ranking</a>
+        <a href="#/metodologia" data-menu="metodologia" aria-current="false">Metodologia</a>
+        <a href="#/fontes" data-menu="fontes" aria-current="false">Fontes</a>
+      </nav>
+    </div>
+  </header>
+  <div id="faixas"></div>
+
+  <main id="app" class="cx miolo" tabindex="-1">
+    <noscript>Este aplicativo precisa de JavaScript ativado no navegador.</noscript>
+  </main>
+
+  <footer class="rodape">
+    <div class="cx">
+      <p>
+        Dados oficiais: Câmara dos Deputados, TSE e Tesouro Nacional (veja <a href="#/fontes">Fontes</a>).
+        Aplicativo independente, sem vínculo com governos, partidos ou órgãos públicos.
+        A nota resume critérios objetivos e não aponta irregularidade: leia a <a href="#/metodologia">Metodologia</a>.
+      </p>
+    </div>
+  </footer>
+
+  <script src="base.js"></script>
+  <script src="metodo-demo.js"></script>
+  <script src="demo.js"></script>
+  <script src="ao-vivo.js"></script>
+  <script src="telas-cargos.js"></script>
+  <script src="telas-perfil.js"></script>
+  <script src="telas-paginas.js"></script>
+  <script src="roteador.js"></script>
+</body>
+</html>

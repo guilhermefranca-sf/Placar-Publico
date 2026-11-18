@@ -1,0 +1,177 @@
+PLACAR PÚBLICO
+==============
+
+O que é
+-------
+Um site que mostra uma nota de 0 a 100 para deputados federais, governadores
+e prefeitos, e a lista oficial de deputados estaduais e vereadores de todo o
+Brasil. Os dados vêm de fontes oficiais (Câmara dos Deputados, TSE e Tesouro
+Nacional) e são atualizados sozinhos, todo dia, depois que o site for
+publicado. O visual é o do "De Olho na Câmara".
+
+O QUE VOCÊ TEM NESTA PASTA
+--------------------------
+  placar-publico-demonstracao.html   Dê dois cliques. Abre o site com dados
+                                     INVENTADOS, só para você ver e mostrar a
+                                     outras pessoas. Não precisa de internet
+                                     nem de mais nenhum arquivo.
+  site\                              O site de verdade (o que será publicado).
+  scripts\                           A rotina que busca os dados e calcula as
+                                     notas. Roda sozinha no GitHub.
+  .github\workflows\atualizar.yml    O "despertador" que liga a rotina todo dia.
+  LEIA-ME.txt                        Este arquivo.
+
+ATENÇÃO: não abra o site\index.html dando dois cliques esperando ver dados
+reais. Sem a publicação, ele entra no "modo demonstração" (dados inventados,
+com um aviso vermelho no topo). Os dados reais só aparecem depois dos passos
+abaixo.
+
+
+PARA PUBLICAR (SEM PAGAR NADA)
+==============================
+O GitHub hospeda o site de graça e roda a atualização diária de graça, desde
+que o projeto seja PÚBLICO. Não há nada secreto aqui: são só dados públicos.
+
+PASSO 1. Criar a conta
+  1. Entre em https://github.com e clique em "Sign up".
+  2. Informe e-mail, senha e escolha um nome de usuário (ele vai aparecer no
+     endereço do site, por exemplo seunome.github.io).
+  3. Confirme o e-mail (eles mandam um código).
+
+PASSO 2. Criar o projeto (chamado de "repositório")
+  1. Já logado, clique no "+" no canto superior direito e em "New repository".
+  2. Em "Repository name", escreva:  placar-publico
+  3. Marque "Public".
+  4. Marque "Add a README file" (isso cria o projeto já com uma base).
+  5. Clique em "Create repository".
+
+PASSO 3. Ligar a publicação do site (faça ANTES de enviar os arquivos)
+  1. Dentro do projeto, clique na aba "Settings" (Configurações).
+  2. No menu da esquerda, clique em "Pages".
+  3. Em "Build and deployment", no campo "Source", escolha "GitHub Actions".
+  (Não precisa salvar nada: a escolha vale na hora.)
+
+PASSO 4. Enviar os arquivos
+  1. Volte à aba "Code". Clique em "Add file" e depois em "Upload files".
+  2. Abra esta pasta no seu computador. Selecione TUDO o que está dentro dela
+     (as pastas .github, scripts e site, e os arquivos) e ARRASTE para a janela
+     do navegador. Dica: se a pasta ".github" não aparecer, veja a
+     "Observação sobre a pasta .github" mais abaixo.
+  3. Espere terminar o envio. Embaixo, clique no botão verde "Commit changes".
+
+PASSO 5. Esperar a primeira atualização
+  Assim que os arquivos chegam, o GitHub liga a rotina sozinho.
+  1. Clique na aba "Actions". Você verá uma linha chamada
+     "Atualizar e publicar o Placar Público" com um círculo amarelo girando.
+  2. A PRIMEIRA vez demora: de 30 minutos a algumas horas, porque a rotina
+     consulta o Tesouro Nacional sobre milhares de prefeituras. Pode fechar o
+     navegador e voltar depois. As seguintes são mais rápidas na parte diária
+     (só a Câmara, poucos minutos).
+  3. Quando o círculo virar um "V" verde, o site está no ar.
+
+PASSO 6. Abrir o site
+  O endereço é:   https://SEU-USUARIO.github.io/placar-publico/
+  (troque SEU-USUARIO pelo nome de usuário que você escolheu). Ele também
+  aparece em Settings > Pages.
+  Abra a página "Fontes" do site: ela mostra a data e a situação de cada fonte.
+
+Pronto. Dali em diante a atualização é automática, todo dia, por volta das
+5h40 da manhã (horário de Brasília).
+
+
+SE ALGO DER ERRADO
+==================
+Um "X" vermelho na aba Actions significa que a rotina falhou.
+  1. Clique na linha vermelha, e depois no bloco "publicar".
+  2. Clique no passo que está com o X e copie as últimas linhas do texto.
+  3. Me mande essas linhas: com elas eu descubro o problema.
+
+Os motivos mais comuns:
+  - "Get Pages site failed" ou "Pages not enabled": o PASSO 3 não foi feito.
+    Faça o passo 3 e clique em "Re-run all jobs" (canto superior direito).
+  - O TSE ou o Tesouro Nacional recusam a conexão: alguns sites do governo
+    bloqueiam servidores de nuvem. Nesse caso, essa parte fica sem dados e o
+    site avisa na página "Fontes" (e mostra um aviso amarelo no topo). O resto
+    continua funcionando e mantém os últimos dados bons.
+  - Quer atualizar na hora, sem esperar a madrugada: aba Actions, clique em
+    "Atualizar e publicar o Placar Público", depois "Run workflow". Se marcar
+    "Refazer tudo agora", ele busca também o TSE e o Tesouro.
+
+Se o site parar de atualizar depois de uns dois meses: o GitHub pausa
+rotinas agendadas em projetos sem nenhuma alteração por 60 dias. Entre na aba
+Actions e clique em "Enable workflow" (ou faça qualquer pequena alteração no
+projeto).
+
+Observação sobre a pasta .github
+  Algumas versões do Windows ou do navegador não arrastam pastas que começam
+  com ponto. Se, depois do envio, a aba Actions não mostrar nada:
+    1. Em "Code", clique em "Add file" > "Create new file".
+    2. No nome do arquivo, digite exatamente:  .github/workflows/atualizar.yml
+       (ao digitar as barras, ele cria as pastas sozinho).
+    3. Abra o arquivo atualizar.yml desta pasta no Bloco de Notas, copie todo o
+       texto e cole na caixa grande. Clique em "Commit changes".
+
+
+O QUE ESTÁ (E O QUE NÃO ESTÁ) NO PLACAR
+=======================================
+Tempo real?
+  Não exatamente. As notas e os números são recalculados todo dia de
+  madrugada. As abas Projetos, Votações, Presença e Gastos do perfil de cada
+  deputado federal consultam a Câmara na hora em que são abertas. Os dados do
+  TSE (quem foi eleito) e do Tesouro (contas) mudam pouco e são atualizados
+  uma vez por semana.
+
+Como é a nota (0 a 100)
+  - Deputados federais: presença no Plenário (30%), votações nominais (25%),
+    projetos apresentados (20%) e uso da cota parlamentar, comparado com os
+    colegas do mesmo estado (25%).
+  - Prefeitos e governadores: gasto com pessoal (40%), endividamento (30%) e
+    relatórios fiscais entregues ao Tesouro (30%), sempre do último ano
+    fechado e comparados aos limites da Lei de Responsabilidade Fiscal.
+  - Deputados estaduais e vereadores: AINDA NÃO TÊM NOTA. Não existe uma
+    fonte única e padronizada de presença, votos e projetos para os 27
+    parlamentos estaduais e as mais de cinco mil câmaras municipais. O site
+    mostra a lista oficial de eleitos (TSE), sem nota.
+  - Todas as regras estão na página "Metodologia" do site e no arquivo
+    scripts\nota.mjs. Para mudar um peso, é lá.
+
+Limites que importam (o site avisa nas telas)
+  - Nota baixa NÃO é acusação. A nota mede quantidade e cumprimento de
+    obrigações, não a qualidade do trabalho nem honestidade.
+  - A lista de prefeitos, governadores, deputados estaduais e vereadores vem
+    do TSE e mostra quem foi ELEITO. Renúncias, cassações e suplentes que
+    assumiram depois não aparecem.
+  - Prefeitos e governadores não são avaliados em saúde, educação, obras ou
+    serviços, por falta de dado oficial comparável e atualizado.
+  - As prefeituras são ligadas pelo nome do município. Se não houver
+    correspondência exata, a pessoa fica "sem nota" em vez de receber uma nota
+    errada.
+  - Governadores eleitos em outubro de 2026 tomam posse em 1º de janeiro de
+    2027. O site troca sozinho para a lista nova nessa data, e eles ficam sem
+    nota até haver um ano fechado de contas da gestão deles. Deputados
+    estaduais trocam em 1º de fevereiro.
+
+O QUE FOI TESTADO
+=================
+  - A rotina de atualização foi testada de ponta a ponta com arquivos de
+    mentira, no mesmo formato que conferi nas fontes reais: cálculo das
+    notas, regras de exceção, falha de uma fonte, virada de ano.
+  - O site foi testado em navegador (computador e celular): todas as telas,
+    filtros, perfis, páginas de texto e as abas ao vivo da Câmara (com uma
+    Câmara simulada).
+  - NÃO foi possível testar a rotina contra os servidores reais daqui, porque
+    o ambiente em que trabalhei não tem acesso a eles. Conferi à mão, num
+    navegador, os endereços e o formato dos dados do TSE, do Tesouro e da
+    Câmara, mas a primeira execução de verdade será no seu GitHub. Se
+    aparecer erro nela, me mande as linhas (veja "Se algo der errado").
+
+Mudar o nome "Placar Público"
+  O nome aparece em vários arquivos da pasta site. O jeito mais simples é me
+  pedir: "troque o nome para tal". Eu devolvo os arquivos prontos para enviar
+  de novo ao GitHub.
+
+Fontes oficiais
+  Câmara dos Deputados: https://dadosabertos.camara.leg.br
+  TSE:                  https://dadosabertos.tse.jus.br
+  Tesouro Nacional:     https://siconfi.tesouro.gov.br
+  Aplicativo independente, sem vínculo com esses órgãos.
