@@ -12,7 +12,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buscar, gravarJson, lerJsonSeExistir, lerDoZip, arredondar } from './util.mjs';
 import { METODO, atribuirPosicoes } from './nota.mjs';
-import { gerarFederais } from './federais.mjs';
+import { gerarFederais, enriquecerVotos } from './federais.mjs';
+import { gerarHistoricos } from './historico.mjs';
 import { gerarEleitos, anosVigentes, UFS } from './tse.mjs';
 import { carregarEntes, indexarEntes, acharMunicipio, acharMunicipioParecido, gerarContas, notaExecutivo } from './siconfi.mjs';
 
@@ -31,6 +32,29 @@ function compacto(i) {
 function destaques(itens, n = 10) {
   const ordenados = itens.filter((i) => i.nota != null).sort((a, b) => a.rank - b.rank);
   return { top: ordenados.slice(0, n).map(compacto), bottom: ordenados.slice(-n).reverse().map(compacto) };
+}
+
+/**
+ * Compara a lista de votações de hoje com a de ontem. Se a Câmara corrigiu algo (resultado, placar,
+ * texto, ou o voto registrado de algum deputado), anota no histórico de correções, sem apagar o que existia.
+ */
+export function registrarCorrecoes(antes, depois, hoje, anteriores = []) {
+  if (!antes || !depois) return anteriores;
+  const novas = [];
+  const velho = new Map(antes.votacoes.map((v, i) => [v.id, { v, i }]));
+  const nomes = { titulo: 'texto oficial', aprovacao: 'resultado oficial', sim: 'votos Sim', nao: 'votos Não', outros: 'outros votos' };
+  for (const [i, v] of depois.votacoes.entries()) {
+    const o = velho.get(v.id);
+    if (!o) continue;
+    const mudou = Object.keys(nomes).filter((k) => o.v[k] !== v[k]).map((k) => ({ campo: nomes[k], antes: o.v[k], depois: v[k] }));
+    let votosMudados = 0;
+    for (const [dep, linha] of Object.entries(depois.deputados)) {
+      const antiga = antes.deputados[dep];
+      if (antiga && antiga[o.i] !== undefined && antiga[o.i] !== linha[i] && antiga[o.i] !== '-' && antiga[o.i] !== '_') votosMudados++;
+    }
+    if (mudou.length || votosMudados) novas.push({ em: hoje.toISOString(), votacao: v.id, titulo: v.titulo, mudancas: mudou, votosIndividuaisAlterados: votosMudados });
+  }
+  return [...novas, ...anteriores].slice(0, 300);
 }
 
 /** Quem tomou posse depois do fim do ano das contas não pode ser avaliado por elas. */
@@ -58,11 +82,22 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
   const arquivo = (n) => path.join(saida, n);
 
   // ---------- Câmara: todo dia ----------
+  let fedHoje = null;
   const anoCamara = hoje.getMonth() < 1 ? hoje.getFullYear() - 1 : hoje.getFullYear();
   try {
-    log(`Câmara: calculando a nota dos deputados federais (${anoCamara})...`);
-    const fed = await gerarFederais({ fontes, ano: anoCamara, hoje });
+    log(`Câmara: calculando o índice dos deputados federais (${anoCamara})...`);
+    const { votos, ...fed } = await gerarFederais({ fontes, ano: anoCamara, hoje });
+    fedHoje = fed;
     gravarJson(arquivo('federais.json'), fed);
+    try {
+      const falhasResumo = await enriquecerVotos(fontes.json, votos);
+      const antes = lerJsonSeExistir(arquivo('votos.json'));
+      const anteriores = (lerJsonSeExistir(arquivo('correcoes.json')) || {}).itens || [];
+      const itens = antes && antes.ano === votos.ano ? registrarCorrecoes(antes, votos, hoje, anteriores) : anteriores;
+      gravarJson(arquivo('correcoes.json'), { aviso: 'Registro de mudanças que a Câmara fez em votações já publicadas (resultado, placar, texto ou voto de algum deputado). Nada é apagado.', itens });
+      gravarJson(arquivo('votos.json'), votos);
+      log(`Câmara: ${votos.votacoes.length} votações nominais gravadas${falhasResumo ? ` (${falhasResumo} sem resumo da matéria)` : ''}.`);
+    } catch (e) { log(`Câmara: votos não gravados. ${e.message}`); }
     dest.federais = destaques(fed.itens);
     meta.fontes.camara = { ok: true, atualizadoEm: hoje.toISOString(), ano: anoCamara, sessoes: fed.sessoes, votacoes: fed.votacoes };
     meta.cargos.federais = { total: fed.total, comNota: fed.comNota, media: fed.media };
@@ -73,11 +108,24 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
   }
 
   // ---------- TSE e Tesouro: a cada 7 dias ----------
-  const precisaPesada = !soFederais && (forcar || !antigo.fontes?.siconfi?.ok || !antigo.fontes?.tse?.ok ||
+  const precisaPesada = !soFederais && (forcar || !antigo.fontes?.siconfi?.ok || !antigo.fontes?.tse?.ok || !antigo.fontes?.historico?.ok ||
     idadeEmDias(antigo.fontes.siconfi.atualizadoEm, hoje) >= DIAS_ENTRE_ATUALIZACOES_PESADAS ||
     !existsSync(arquivo('governadores.json')));
 
   if (precisaPesada) {
+    // Histórico de mandatos dos deputados federais (Câmara): quase não muda, por isso é semanal.
+    try {
+      const fedAtual = fedHoje || lerJsonSeExistir(arquivo('federais.json'));
+      if (!fedAtual) throw new Error('sem a lista de deputados federais');
+      log('Câmara: lendo o histórico de mandatos de cada deputado...');
+      const r = await gerarHistoricos({ json: fontes.json, ids: fedAtual.itens.map((i) => i.id), pasta: saida, hoje, aoAndar: (f, t) => log(`  histórico ${f} de ${t}`) });
+      meta.fontes.historico = { ok: r.falhas < r.total, atualizadoEm: hoje.toISOString(), total: r.total, falhas: r.falhas, semHistorico: r.semHistorico };
+      log(`Câmara: histórico gravado (${r.total - r.falhas} de ${r.total}).`);
+    } catch (e) {
+      log(`Câmara (histórico): FALHOU. ${e.message}`);
+      meta.fontes.historico = { ...(antigo.fontes?.historico || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
+    }
+
     let eleitos = null;
     try {
       log('TSE: baixando a lista oficial de eleitos...');

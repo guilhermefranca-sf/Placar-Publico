@@ -3,11 +3,13 @@
 /* =====================================================================
    Placar Público — roteador
    Troca de tela pelo endereço depois do "#":
-     #/                         início (deputados federais)
+     #/                              início (deputados federais)
      #/federais  #/governadores  #/prefeitos  #/estaduais  #/vereadores
-     #/federais/{id}[/{aba}]    perfil de deputado federal
-     #/{cargo}/{UF}/{id}        perfil dos demais cargos
-     #/metodologia   #/fontes
+     #/federais/{id}[/{aba}]         perfil de deputado federal
+     #/{governadores|prefeitos}/{UF}/{id}[/{aba}]   perfil de governador e prefeito
+     #/{estaduais|vereadores}/{UF}/{id}             ficha de eleito
+     #/comparar[/{cargo}/{A}/{B}]    comparar duas pessoas
+     #/noticias   #/mais   #/metodologia   #/fontes   #/verificacao
    ===================================================================== */
 
 // Foto que não carrega vira um círculo com as iniciais, sem ícone quebrado.
@@ -21,26 +23,30 @@ document.addEventListener('error', e => {
   img.replaceWith(span);
 }, true);
 
-function marcarMenu(chave) {
-  $$('.menu a').forEach(a => a.setAttribute('aria-current', a.dataset.menu === chave ? 'page' : 'false'));
-}
-
 function rota() {
-  const partes = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const partes = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   const [a, b, c, d] = partes;
-  // Trocar só a aba do mesmo deputado não conta como tela nova: o token continua o mesmo.
-  const mesmoPerfil = perfilAtual && a === 'federais' && /^\d+$/.test(b || '') && perfilAtual.chave === `federais/${b}`;
-  if (mesmoPerfil) { perfilAtual.trocarAba(c); return; }
+
+  // Trocar só a aba do mesmo perfil não conta como tela nova: o token continua o mesmo.
+  let chave = null, aba = null;
+  if (a === 'federais' && /^\d+$/.test(b || '')) { chave = `federais/${b}`; aba = c; }
+  else if ((a === 'governadores' || a === 'prefeitos') && b && c && UFS.includes(b)) { chave = `${a}/${b}/${c}`; aba = d; }
+  if (chave && perfilAtual && perfilAtual.chave === chave) { perfilAtual.trocarAba(aba); return; }
+
   const token = ++rotaToken;
   perfilAtual = null;
+  app.onclick = null;
   window.scrollTo(0, 0);
 
   if (a === 'metodologia') { marcarMenu('metodologia'); return viewMetodologia(); }
   if (a === 'fontes') { marcarMenu('fontes'); return viewFontes(); }
+  if (a === 'verificacao') { marcarMenu('mais'); return viewVerificacao(); }
+  if (a === 'mais') { marcarMenu('mais'); return viewMais(); }
+  if (a === 'noticias') { marcarMenu('noticias'); return viewNoticias(token); }
+  if (a === 'comparar') { marcarMenu('comparar'); return viewComparar(partes.slice(1), token); }
 
   marcarMenu('inicio');
-  if (!a) return viewCargo('federais', token, true);
-  if (!CARGOS[a]) return viewCargo('federais', token, true);
+  if (!a || !CARGOS[a]) return viewCargo('federais', token, true);
   if (a === 'federais') {
     if (/^\d+$/.test(b || '')) return viewPerfil('federais', '', b, c, token);
     return viewCargo('federais', token, false);
@@ -57,6 +63,7 @@ function rota() {
     mostrar(app, html`<div class="erro" role="alert"><strong>Não foi possível iniciar o aplicativo.</strong><p>Recarregue a página. Se o problema continuar, tente de novo mais tarde.</p></div>`);
     return;
   }
+  montarMenus();
   montarFaixas();
   window.addEventListener('hashchange', rota);
   rota();

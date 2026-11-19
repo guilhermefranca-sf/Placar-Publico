@@ -2,9 +2,11 @@
 
 /* =====================================================================
    Placar Público — consulta ao vivo à Câmara dos Deputados
-   Estas abas do perfil dos deputados federais (Projetos, Votações,
-   Presença e Gastos) vêm do aplicativo De Olho na Câmara. Elas consultam
-   a API de Dados Abertos da Câmara na hora em que a pessoa abre a aba.
+   Partes do perfil dos deputados federais (Projetos, Presença, Gastos,
+   Fiscalização) consultam a API de Dados Abertos da Câmara na hora em que
+   a pessoa abre a aba. O que a API da Câmara não libera para outros
+   endereços (CORS) e o que muda pouco (histórico, votos) vem dos arquivos
+   gerados todo dia pela rotina de atualização.
    ===================================================================== */
 
 /* Proposições em que o deputado consta como autor, com data de apresentação no ano.
@@ -76,74 +78,27 @@ async function carregarGastos(id, ano) {
   };
 }
 
-/* Votações nominais do Plenário nos últimos 12 meses.
-   A API não tem "votos de um deputado". O caminho é: listar as votações do Plenário,
-   separar as nominais (a descrição traz o placar, "Sim: 252; Não: 176") e ler os votos
-   de cada uma. Isso é feito uma vez e vale para todos os deputados da visita. */
-const ouvintesProgresso = new Set();
-let textoProgresso = '';
-let promessaVotacoes = null;
-function informarProgresso(texto) { textoProgresso = texto; ouvintesProgresso.forEach(f => f(texto)); }
-
-function carregarVotacoes() {
-  if (promessaVotacoes) return promessaVotacoes;
-  promessaVotacoes = (async () => {
-    informarProgresso('Buscando as votações do Plenário…');
-    const janelas = [];
-    let fim = new Date();
-    for (let i = 0; i < JANELAS_VOTACOES; i++) {
-      const ini = somarDias(fim, -DIAS_JANELA);
-      janelas.push([isoDia(ini), isoDia(fim)]);
-      fim = somarDias(ini, -1);
-    }
-    let prontas = 0;
-    const listas = await Promise.all(janelas.map(async ([ini, f]) => {
-      const r = await buscarTudo(
-        `/votacoes?idOrgao=${ID_PLENARIO}&dataInicio=${ini}&dataFim=${f}&ordem=DESC&ordenarPor=dataHoraRegistro`, 8);
-      informarProgresso(`Buscando as votações do Plenário… (${++prontas} de ${janelas.length} períodos)`);
-      return r.itens;
-    }));
-    const nominais = [...new Map(listas.flat().filter(v => /\bSim:\s*\d+/.test(v.descricao || '')).map(v => [v.id, v])).values()];
-    let lidas = 0, falhas = 0;
-    await emLotes(nominais, 6, async v => {
-      try {
-        const r = await getJSON(`/votacoes/${v.id}/votos`, { vazioSe404: true });
-        v.votos = new Map((r.dados || []).map(x => [x.deputado_ && x.deputado_.id, x.tipoVoto]));
-      } catch (e) {
-        console.error(e);
-        falhas++;
-        v.votos = new Map();   // fica de fora e é contada no aviso da tela
-      }
-      informarProgresso(`Lendo os votos de ${nominais.length} votações nominais… (${++lidas} de ${nominais.length})`);
-    });
-    const comVotos = nominais.filter(v => v.votos.size > 0);
-    return {
-      falhas,                                              // erro de rede ao ler os votos
-      semLista: nominais.length - comVotos.length - falhas, // a API não publicou a lista de votos
-      nominais: comVotos.sort((a, b) => (a.dataHoraRegistro < b.dataHoraRegistro ? 1 : -1))
-    };
-  })();
-  promessaVotacoes.catch(() => { promessaVotacoes = null; });
-  return promessaVotacoes;
+/* Quantas proposições (só projetos e propostas) o deputado apresentou em cada ano.
+   A API devolve o total na última página da lista, por isso basta pedir 1 item por consulta. */
+async function contarProjetosAno(id, ano) {
+  const r = await getJSON(`/proposicoes?idDeputadoAutor=${id}&siglaTipo=${[...SIGLAS_PROJETO].join(',')}&ano=${ano}&itens=1`);
+  const ultima = (r.links || []).find(l => l.rel === 'last');
+  if (ultima) return Number((/[?&]pagina=(\d+)/.exec(ultima.href) || [])[1]) || 0;
+  return (r.dados || []).length;
+}
+async function carregarProjetosPorAno(id, deAno, ateAno) {
+  const anos = Array.from({ length: ateAno - deAno + 1 }, (_, i) => deAno + i);
+  const falhas = [];
+  const contagens = await emLotes(anos, 4, async ano => {
+    try { return await contarProjetosAno(id, ano); } catch (e) { falhas.push(ano); return null; }
+  });
+  return { anos: anos.map((ano, i) => ({ ano, n: contagens[i] })), falhas };
 }
 
-const carregarDetalheVotacao = id => getJSON(`/votacoes/${encodeURIComponent(id)}`);
-function rotuloRede(url) {
-  try {
-    const h = new URL(url).hostname.replace(/^www\./, '');
-    if (/twitter|x\.com/.test(h)) return 'X (Twitter)';
-    if (/instagram/.test(h)) return 'Instagram';
-    if (/facebook/.test(h)) return 'Facebook';
-    if (/youtube|youtu\.be/.test(h)) return 'YouTube';
-    if (/tiktok/.test(h)) return 'TikTok';
-    return h;
-  } catch (e) { return 'Link'; }
-}
-function tile(chave, valor, legenda) {
-  const el = $(`[data-stat="${chave}"]`);
-  if (!el) return;
-  $('.stat-valor', el).textContent = valor;
-  $('.stat-legenda', el).textContent = legenda;
+/* Comissões e outros órgãos de que o deputado participa. */
+async function carregarOrgaos(id) {
+  const r = await getJSON(`/deputados/${id}/orgaos?itens=100&ordem=DESC&ordenarPor=dataInicio`, { vazioSe404: true });
+  return (r.dados || []).map(o => ({ sigla: o.siglaOrgao, nome: o.nomeOrgao, papel: o.titulo, ini: o.dataInicio, fim: o.dataFim }));
 }
 
 /* --- Aba Projetos --- */
@@ -291,129 +246,4 @@ function montarGastos(el, d, { id, ano }) {
     </div>
     <p class="nota">Valores líquidos: valor do documento menos glosas (partes que a Câmara não reembolsou). O total confere com o divulgado no
       <a href="${PORTAL}/deputados/${id}" target="_blank" rel="noopener">portal da Câmara</a>.</p>`);
-}
-
-/* --- Aba Votações --- */
-
-const TIPOS_VOTO = {
-  Sim: { chave: 'sim', rotulo: 'Sim' },
-  'Não': { chave: 'nao', rotulo: 'Não' },
-  'Abstenção': { chave: 'abst', rotulo: 'Abstenção' },
-  'Obstrução': { chave: 'obstr', rotulo: 'Obstrução' },
-  'Artigo 17': { chave: 'art17', rotulo: 'Presidindo a sessão' }
-};
-const ORDEM_VOTOS = ['sim', 'nao', 'abst', 'obstr', 'art17', 'secreto', 'ausente', 'outro'];
-const ROTULO_CHAVE = {
-  sim: 'Sim', nao: 'Não', abst: 'Abstenção', obstr: 'Obstrução', art17: 'Presidindo a sessão',
-  secreto: 'Voto secreto', ausente: 'Não votou', outro: 'Outro'
-};
-
-function classificarVoto(votacao, depId) {
-  if (!votacao.votos.has(depId)) return { chave: 'ausente', rotulo: 'Não votou' };
-  const t = votacao.votos.get(depId);
-  if (t == null) return { chave: 'secreto', rotulo: 'Voto secreto' };
-  return TIPOS_VOTO[t] || { chave: 'outro', rotulo: t };
-}
-
-async function painelVotacoes(painel, depId, vale) {
-  mostrar(painel, html`<p class="progresso" id="progresso">${textoProgresso || 'Preparando a consulta…'}</p>
-    <p class="painel-sub">Na primeira vez, a consulta lê os votos de todo o Plenário e leva alguns segundos. Depois, trocar de deputado é imediato.</p>
-    ${esqueletoLinhas(5)}`);
-  const ouvinte = t => { const p = $('#progresso'); if (p) p.textContent = t; };
-  ouvintesProgresso.add(ouvinte);
-  try {
-    const { nominais, falhas, semLista } = await carregarVotacoes();
-    if (!vale()) return;
-    montarVotos(painel, Number(depId), nominais, falhas + semLista);
-  } catch (e) {
-    console.error(e);
-    if (vale()) mostrarErro(painel, 'Não foi possível carregar as votações.', () => painelVotacoes(painel, depId, vale));
-  } finally {
-    ouvintesProgresso.delete(ouvinte);
-  }
-}
-
-function montarVotos(el, depId, nominais, falhas = 0) {
-  if (!nominais.length) {
-    return mostrar(el, html`<h2 class="painel-titulo">Votações nominais</h2>
-      <p class="painel-sub">Não encontramos votações nominais do Plenário nos últimos 12 meses.</p>`);
-  }
-  const registros = nominais.map(v => ({ v, voto: classificarVoto(v, depId) }));
-  const contagem = {};
-  registros.forEach(r => { contagem[r.voto.chave] = (contagem[r.voto.chave] || 0) + 1; });
-  const votou = registros.length - (contagem.ausente || 0);
-  const chaves = ORDEM_VOTOS.filter(k => contagem[k]);
-  const vista = { filtro: 'todos', limite: 25 };
-  tile('votacoes', `${votou} de ${registros.length}`, 'votações nominais em que votou (12 meses)');
-
-  const maisAntiga = dataBR(nominais[nominais.length - 1].data);
-  const maisNova = dataBR(nominais[0].data);
-
-  const raiz = document.createElement('div');
-  el.replaceChildren(raiz);
-
-  mostrar(raiz, html`
-    <h2 class="painel-titulo">Como votou nos últimos 12 meses</h2>
-    <p class="painel-sub">${plural(registros.length, 'votação nominal', 'votações nominais')} no Plenário, de ${maisAntiga} a ${maisNova}. Votações simbólicas, em que ninguém registra voto individual, não entram.</p>
-    <div class="pilha" role="img" aria-label="Distribuição dos votos">
-      ${chaves.map(k => html`<span class="cor-${k}" style="flex:${contagem[k]}" title="${ROTULO_CHAVE[k]}: ${contagem[k]}"></span>`)}
-    </div>
-    <ul class="legenda">${chaves.map(k => html`<li><i class="cor-${k}"></i>${ROTULO_CHAVE[k]} <b>${contagem[k]}</b></li>`)}</ul>
-    <div class="chips" role="group" aria-label="Filtrar por voto">
-      <button class="chip" type="button" data-voto="todos" aria-pressed="true">Todos<b>${registros.length}</b></button>
-      ${chaves.map(k => html`<button class="chip" type="button" data-voto="${k}" aria-pressed="false">${ROTULO_CHAVE[k]}<b>${contagem[k]}</b></button>`)}
-    </div>
-    <ul id="lista-votos"></ul>
-    <div class="mais-itens" id="mais-votos"></div>
-    <p class="nota">“Não votou” significa que não há voto registrado dele numa votação em que outros deputados votaram. Pode ser ausência, licença ou mandato ainda não iniciado.
-      Nas votações secretas, a API informa quem participou, mas não como votou.
-      ${falhas ? ` ${plural(falhas, 'votação nominal ficou de fora', 'votações nominais ficaram de fora')} desta contagem porque a API não trouxe a lista de votos. Por isso o total pode diferir em poucas votações do que o portal da Câmara mostra.` : ''}</p>`);
-
-  const lista = $('#lista-votos', raiz);
-  const desenhar = () => {
-    raiz.querySelectorAll('[data-voto]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.voto === vista.filtro)));
-    const filtrados = registros.filter(r => vista.filtro === 'todos' || r.voto.chave === vista.filtro);
-    const visiveis = filtrados.slice(0, vista.limite);
-    mostrar(lista, html`${visiveis.map(({ v, voto }) => {
-      const m = /^(.*?)\s*(Sim:\s*\d+.*)$/s.exec(v.descricao || '');
-      const texto = m ? m[1] : v.descricao;
-      const placar = m ? m[2] : '';
-      return html`<li class="voto-linha">
-        <div>
-          <div class="voto-cab"><time>${dataBR(v.data)}</time>${v.aprovacao === 1 ? html`<span>Aprovada</span>` : v.aprovacao === 0 ? html`<span>Rejeitada</span>` : ''}</div>
-          <p class="voto-desc">${texto}</p>
-          <p class="voto-prop" data-votacao="${v.id}"></p>
-          ${placar ? html`<p class="placar">Placar geral: ${placar}</p>` : ''}
-        </div>
-        <span class="pill v-${voto.chave}">${voto.rotulo}</span>
-      </li>`;
-    })}`);
-    mostrar($('#mais-votos', raiz), filtrados.length > vista.limite
-      ? html`<button class="botao" type="button" data-mais>Mostrar mais (${filtrados.length - vista.limite} restantes)</button>` : html``);
-    preencherProposicoes(visiveis.map(r => r.v));
-  };
-
-  raiz.addEventListener('click', e => {
-    const b = e.target.closest('[data-voto]');
-    if (b) { vista.filtro = b.dataset.voto; vista.limite = 25; return desenhar(); }
-    if (e.target.closest('[data-mais]')) { vista.limite += 25; desenhar(); }
-  });
-  desenhar();
-}
-
-// Depois da lista aparecer, busca qual proposição cada votação trata.
-function preencherProposicoes(votacoes) {
-  emLotes(votacoes, 5, async v => {
-    try {
-      const det = (await carregarDetalheVotacao(v.id)).dados || {};
-      const p = (det.proposicoesAfetadas || [])[0];
-      document.querySelectorAll(`[data-votacao="${v.id}"]`).forEach(no => {
-        if (!p || no.dataset.pronto) return;
-        no.dataset.pronto = '1';
-        const ementa = (p.ementa || '').length > 260 ? `${p.ementa.slice(0, 260)}…` : (p.ementa || '');
-        mostrar(no, html`<strong>${nomeProposicao(p)}</strong> · ${ementa}
-          <a href="${PORTAL}/propostas-legislativas/${p.id}" target="_blank" rel="noopener">tramitação</a>`);
-      });
-    } catch (e) { /* o detalhe é opcional; a votação continua visível */ }
-  });
 }

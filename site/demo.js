@@ -85,11 +85,12 @@ function demoConstruir() {
         ]
       };
       item.nota = demoNota(item.comp, { pres: 30, vot: 25, proj: 20, cota: 25 });
+      item.extra = { sessoes: [Math.round(pres / 100 * SESSOES), SESSOES], votos: [Math.round(vot / 100 * VOTACOES), VOTACOES], projetos: nProj, gasto, meses: 9.5 };
       federais.push(item);
     }
   }
   [4, 120, 301].forEach((k, n) => {
-    federais[k].nota = null; federais[k].comp = [];
+    federais[k].nota = null; federais[k].comp = []; delete federais[k].extra;
     federais[k].motivo = n === 0 ? 'Só 12 sessões deliberativas desde a primeira presença (03/09/2026); o mínimo é 20.' : 'Sem presença registrada em sessões deliberativas do Plenário em 2026.';
   });
   const fedCom = demoPosicoes(federais);
@@ -102,13 +103,12 @@ function demoConstruir() {
     const feitas = r2() < 0.8 ? 10 : 6 + Math.floor(r2() * 4);
     const sP = demoRound(Math.max(0, Math.min(100, 100 * (1.1 - pessoal / limP) / 0.3)));
     const sD = demoRound(Math.max(0, Math.min(100, 100 * (1 - Math.max(0, divida) / limD) / 0.5)));
-    const sE = demoRound(feitas / 10 * 100);
     const comp = [
       { k: 'pessoal', s: sP, f: `Gastou ${pessoal.toLocaleString('pt-BR')}% da receita corrente líquida com pessoal em 2025. O limite da Lei de Responsabilidade Fiscal é ${limP}%.` },
-      { k: 'divida', s: sD, f: `Dívida consolidada líquida de ${divida.toLocaleString('pt-BR')}% da receita corrente líquida. O limite é ${limD}%.` },
-      { k: 'entregas', s: sE, f: `Entregou ${feitas} dos 10 relatórios fiscais obrigatórios de 2025 ao Tesouro Nacional.` }
+      { k: 'divida', s: sD, f: `Dívida consolidada líquida de ${divida.toLocaleString('pt-BR')}% da receita corrente líquida. O limite é ${limD}%.` }
     ];
-    return { comp, nota: demoNota(comp, { pessoal: 40, divida: 30, entregas: 30 }) };
+    const contas = { pessoal, divida, limitePessoal: limP, limiteDivida: limD, rgf: 'Q3', entregas: { feitas, esperado: 10, rreo: Math.min(6, feitas), rgf: Math.max(0, Math.min(3, feitas - 6)), dca: feitas >= 10 ? 1 : 0 } };
+    return { comp, contas, nota: demoNota(comp, { pessoal: 60, divida: 40 }) };
   };
 
   const prefeitos = {};
@@ -148,7 +148,8 @@ function demoConstruir() {
     fontes: {
       camara: { ok: true, atualizadoEm: agora, ano: 2026, sessoes: SESSOES, votacoes: VOTACOES },
       tse: { ok: true, atualizadoEm: agora, eleicoes: { municipal: 2024, governadores: 2022, estaduais: 2022 }, avisos: 0 },
-      siconfi: { ok: true, atualizadoEm: agora, exercicio: 2025, entes: todosPref.length + governadores.length, comErro: 0 }
+      siconfi: { ok: true, atualizadoEm: agora, exercicio: 2025, entes: todosPref.length + governadores.length, comErro: 0 },
+      historico: { ok: true, atualizadoEm: agora, total: federais.length, falhas: 0, semHistorico: 0 }
     },
     cargos: {
       federais: { total: federais.length, comNota: fedCom, media: demoMedia(federais) },
@@ -175,7 +176,75 @@ function demoConstruir() {
   }
   DEMO.meta.cargos.estaduais.total = totE;
   DEMO.meta.cargos.vereadores.total = totV;
+
+  /* Como votou? (votações fictícias, com matérias que não existem) */
+  const rv = aleatorio(777);
+  const TIPOS_DEMO = ['principal', 'emenda', 'destaque', 'requerimento', 'principal', 'substitutivo'];
+  const votacoes = Array.from({ length: VOTACOES }, (_, k) => {
+    const tipo = TIPOS_DEMO[k % TIPOS_DEMO.length];
+    const sim = 180 + Math.floor(rv() * 260), nao = 20 + Math.floor(rv() * 220);
+    const d = new Date(Date.UTC(2026, 10, 12 - k * 2)).toISOString().slice(0, 10);
+    const materia = `${tipo === 'requerimento' ? 'REQ' : 'PL'} ${9000 + k}/2026`;
+    return {
+      id: `DEMO${k}`, data: d, tipo, materia,
+      titulo: tipo === 'principal' ? 'Aprovado o projeto fictício de demonstração.' : tipo === 'emenda' ? 'Rejeitada a emenda fictícia nº 2.' : tipo === 'destaque' ? 'Rejeitado o destaque fictício da bancada de exemplo.' : tipo === 'requerimento' ? 'Aprovado o requerimento fictício de urgência.' : 'Aprovado o substitutivo fictício.',
+      aprovacao: sim > nao ? 1 : 0, sim, nao, outros: Math.floor(rv() * 12),
+      resumo: `Ementa inventada ${k + 1}: dispõe sobre assunto de demonstração, sem relação com nenhuma lei real.`,
+      fonte: 'https://dadosabertos.camara.leg.br/api/v2/votacoes/DEMO', portal: 'https://www.camara.leg.br/'
+    };
+  });
+  const letras = {};
+  federais.forEach(f => {
+    const taxa = f.comp.length ? f.comp.find(c => c.k === 'vot').s / 100 : 0;
+    letras[f.id] = votacoes.map((v, k) => {
+      if (!f.comp.length) return '-';
+      if (rv() > taxa) return '-';
+      const x = rv();
+      return x < 0.55 ? 'S' : x < 0.88 ? 'N' : x < 0.95 ? 'A' : 'O';
+    }).join('');
+  });
+  DEMO.votos = { ano: 2026, geradoEm: agora, codigos: { S: 'Sim', N: 'Não', A: 'Abstenção', O: 'Obstrução', P: 'Presidindo a sessão (art. 17)', X: 'Voto secreto ou sem tipo informado', '-': 'Sem voto registrado', _: 'Antes da primeira presença registrada no ano' }, votacoes, deputados: letras };
+  DEMO.correcoes = { itens: [{ em: agora, votacao: 'DEMO3', titulo: 'Rejeitado o destaque fictício da bancada de exemplo.', mudancas: [{ campo: 'votos Não', antes: 150, depois: 151 }], votosIndividuaisAlterados: 1 }] };
+  DEMO.presidenteId = federais[100].id;
   DEMO.pronto = true;
+}
+
+/* Histórico de mandatos fictício de um deputado (o mesmo formato que a rotina de atualização gera). */
+function demoHistorico(id) {
+  demoConstruir();
+  const item = DEMO.federais.itens.find(i => i.id === String(id));
+  if (!item) throw new Error(`HTTP 404 em deputados/${id}.json`);
+  const n = Number(id);
+  const r = aleatorio(n * 7919);
+  const antes = n % 4 === 0 ? 3 : n % 3 === 0 ? 2 : n % 5 === 0 ? 1 : 0; // quantos mandatos anteriores
+  const mandatos = [];
+  const eventos = [];
+  const pausas = [];
+  for (let k = antes; k >= 0; k--) {
+    const leg = 57 - k;
+    const ini = `${1995 + 4 * (leg - 50)}-02-01`, fim = `${1999 + 4 * (leg - 50)}-01-31`;
+    const emCurso = k === 0;
+    const licenca = emCurso && n % 7 === 0;
+    const dias = emCurso ? 1388 - (licenca ? 120 : 0) : 1460 - (n % 9 === 0 ? 200 : 0);
+    const completo = !emCurso && n % 9 !== 0;
+    const motivos = [];
+    if (licenca) { motivos.push('Afastamento com prazo determinado - Licença para Tratar de Interesse Particular: de 2025-03-01 a 2025-06-29.'); pausas.push({ ini: '2025-03-01', fim: '2025-06-29', motivo: 'Afastamento com prazo determinado - Licença para Tratar de Interesse Particular', tipo: 'Licença' }); eventos.push({ data: '2025-03-01', leg, situacao: 'Licença', texto: 'Afastamento com prazo determinado - Licença para Tratar de Interesse Particular' }, { data: '2025-06-29', leg, situacao: 'Exercício', texto: 'Reassunção - Término de licença' }); }
+    if (!emCurso && !completo) motivos.push(`Saiu em ${fim.slice(0, 4) - 1}-08-10: Afastamento definitivo (exemplo fictício).`);
+    eventos.unshift({ data: ini, leg, situacao: 'Exercício', texto: 'Posse - Início de mandato' });
+    if (!emCurso) eventos.push({ data: fim, leg, situacao: 'Fim de Mandato', texto: 'Término da legislatura' });
+    mandatos.push({ leg, ini, fim, emCurso, inicioExercicio: ini, condicao: r() < 0.15 ? 'Suplente' : 'Titular', dias, diasLegislatura: emCurso ? 1388 : 1460, completo: emCurso ? null : completo, semAfastamento: !licenca && (emCurso || completo), motivos });
+  }
+  eventos.sort((a, b) => a.data.localeCompare(b.data));
+  const total = mandatos.reduce((a, m) => a + m.dias, 0);
+  const atual = mandatos[mandatos.length - 1];
+  const direcao = String(id) === DEMO.presidenteId ? [{ leg: 57, cargo: 'Presidente', ini: '2025-02-01', fim: null }] : [];
+  return {
+    id: String(id), geradoEm: new Date().toISOString(),
+    ficha: { nomeCivil: item.nome.toUpperCase(), nascimento: '1975-05-17', naturalidade: 'Cidade Exemplo/' + item.uf, escolaridade: 'Superior', situacao: 'Exercício', condicao: 'Titular', desde: '2023-02-01', gabinete: { sala: String(200 + n % 400), predio: '4', telefone: '3215-0000', email: 'dep.exemplo@exemplo.invalid' }, redes: [] },
+    anoInicio: Number(mandatos[0].ini.slice(0, 4)), mandatos, pausas, diasTotais: total, anosEfetivos: Math.round(total / 365.25 * 100) / 100,
+    legislaturaAtual: { leg: 57, ini: atual.ini, fim: atual.fim, dias: atual.dias, anos: Math.round(atual.dias / 365.25 * 100) / 100 },
+    eventos, direcao
+  };
 }
 
 function gerarDemo(nome) {
@@ -185,6 +254,10 @@ function gerarDemo(nome) {
   if (nome === 'federais.json') return DEMO.federais;
   if (nome === 'ranking-prefeitos.json') return DEMO.ranking;
   if (nome === 'governadores.json') return DEMO.governadores;
+  if (nome === 'votos.json') return DEMO.votos;
+  if (nome === 'correcoes.json') return DEMO.correcoes;
+  const h = /^deputados\/(\d+)\.json$/.exec(nome);
+  if (h) return demoHistorico(h[1]);
   const m = /^(prefeitos|estaduais|vereadores)-([A-Z]{2})\.json$/.exec(nome);
   if (m) {
     const [, tipo, uf] = m;

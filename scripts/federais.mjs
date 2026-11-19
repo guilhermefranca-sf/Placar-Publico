@@ -1,7 +1,7 @@
 // Deputados federais: calcula a nota de cada um a partir dos arquivos abertos da Câmara.
 // Em vez de milhares de consultas, usa os arquivos do ano que a Câmara atualiza todo dia.
 
-import { lerCsv, criarPercentil, arredondar, dataBR, reais } from './util.mjs';
+import { lerCsv, criarPercentil, arredondar, dataBR, reais, emLotes } from './util.mjs';
 import { METODO, mediaPonderada, atribuirPosicoes, pesoDe } from './nota.mjs';
 
 export const API = 'https://dadosabertos.camara.leg.br/api/v2';
@@ -57,16 +57,31 @@ export async function gerarFederais({ fontes, ano, hoje = new Date() }) {
   // 3. Votações nominais do Plenário e voto de cada deputado
   const vt = lerCsv(await fontes.texto(`${ARQUIVOS}/votacoes/csv/votacoes-${ano}.csv`));
   const plenario = new Map(); // idVotacao -> data
+  const detalhesVot = new Map(); // idVotacao -> dados oficiais da votação
+  const campo = (tab, l, nome) => (nome in tab.ix ? l[tab.ix[nome]] : '');
   for (const l of vt.linhas) {
-    if (l[vt.ix.siglaOrgao] === 'PLEN') plenario.set(l[vt.ix.id], String(l[vt.ix.data]).slice(0, 10));
+    if (l[vt.ix.siglaOrgao] !== 'PLEN') continue;
+    plenario.set(l[vt.ix.id], String(l[vt.ix.data]).slice(0, 10));
+    detalhesVot.set(l[vt.ix.id], {
+      id: l[vt.ix.id],
+      data: String(l[vt.ix.data]).slice(0, 10),
+      hora: String(campo(vt, l, 'dataHoraRegistro') || ''),
+      descricao: String(l[vt.ix.descricao] || '').trim(),
+      aprovacao: campo(vt, l, 'aprovacao') === '' ? null : Number(campo(vt, l, 'aprovacao')),
+      sim: Number(campo(vt, l, 'votosSim')) || 0,
+      nao: Number(campo(vt, l, 'votosNao')) || 0,
+      outros: Number(campo(vt, l, 'votosOutros')) || 0
+    });
   }
   const vv = lerCsv(await fontes.texto(`${ARQUIVOS}/votacoesVotos/csv/votacoesVotos-${ano}.csv`));
   const votantes = new Map(); // idVotacao -> Set(idDeputado)
+  const tipoDoVoto = new Map(); // idVotacao -> Map(idDeputado -> texto do voto)
   for (const l of vv.linhas) {
     const v = l[vv.ix.idVotacao];
     if (!plenario.has(v)) continue;
-    if (!votantes.has(v)) votantes.set(v, new Set());
+    if (!votantes.has(v)) { votantes.set(v, new Set()); tipoDoVoto.set(v, new Map()); }
     votantes.get(v).add(l[vv.ix.deputado_id]);
+    tipoDoVoto.get(v).set(l[vv.ix.deputado_id], l[vv.ix.voto]);
   }
   const nominais = [...votantes.entries()]
     .filter(([, s]) => s.size >= MIN_VOTANTES_NOMINAL)
@@ -162,13 +177,15 @@ export async function gerarFederais({ fontes, ano, hoje = new Date() }) {
       { k: 'cota', s: sCota, f: `Gastou ${reais(e.gasto)} da cota (${reais(e.gasto / e.meses)} por mês), menos do que ${Math.floor((1 - pCota) * 100)}% dos colegas de ${i.uf}.` }
     ];
     i.nota = mediaPonderada(i.comp.map((c) => ({ peso: pesoDe('federais', c.k), s: c.s })), 3);
-    if (i.nota == null) i.motivo = 'Dados insuficientes para calcular a nota.';
+    if (i.nota == null) i.motivo = 'Dados insuficientes para calcular o índice.';
   }
   for (const i of itens) { delete i._pres; delete i._vot; delete i._projMes; delete i._cotaMes; if (i.obs === undefined) delete i.obs; }
 
   const comNota = atribuirPosicoes(itens);
   const notas = itens.filter((i) => i.nota != null).map((i) => i.nota);
+  const votos = montarVotos({ ano, hoje, nominais, detalhesVot, tipoDoVoto, itens });
   return {
+    votos,
     ano,
     geradoEm: hoje.toISOString(),
     sessoes: sessoes.size,
@@ -178,4 +195,71 @@ export async function gerarFederais({ fontes, ano, hoje = new Date() }) {
     media: notas.length ? arredondar(notas.reduce((a, b) => a + b, 0) / notas.length, 1) : null,
     itens
   };
+}
+
+
+/* ---------- Como votou? ---------- */
+
+// Código de uma letra para cada tipo de registro. O texto de cada código vai junto no arquivo.
+export const CODIGOS_VOTO = {
+  S: 'Sim', N: 'Não', A: 'Abstenção', O: 'Obstrução', P: 'Presidindo a sessão (art. 17)',
+  X: 'Voto secreto ou sem tipo informado', '-': 'Sem voto registrado', _: 'Antes da primeira presença registrada no ano'
+};
+const LETRA_DO_VOTO = { 'Sim': 'S', 'Não': 'N', 'Abstenção': 'A', 'Obstrução': 'O', 'Artigo 17': 'P' };
+
+/**
+ * Classifica a votação pelo texto oficial dela (não atribui valor político a nenhuma):
+ * principal, emenda, substitutivo, destaque, requerimento ou outro.
+ */
+export function classificarVotacao(descricao, siglaTipo = '') {
+  const d = String(descricao || '');
+  if (/requerimento/i.test(d) || /^(REQ|RIC|INC|RCP)$/.test(siglaTipo)) return 'requerimento';
+  if (/destaque/i.test(d)) return 'destaque';
+  if (/substitutivo/i.test(d)) return 'substitutivo';
+  if (/emenda/i.test(d) && !/proposta de emenda (à|a) constitui/i.test(d)) return 'emenda';
+  if (/medida provisória|projeto de lei|proposta de emenda (à|a) constitui|projeto de decreto|projeto de resolução|\bPL\b|\bPEC\b/i.test(d) || SIGLAS_PROJETO.has(siglaTipo)) return 'principal';
+  return 'outro';
+}
+
+/** Monta o arquivo votos.json (sem os resumos, que vêm da API na etapa seguinte). */
+export function montarVotos({ ano, hoje, nominais, detalhesVot, tipoDoVoto, itens }) {
+  const ordenadas = nominais.map((n) => detalhesVot.get(n.id)).filter(Boolean)
+    .sort((a, b) => (a.hora < b.hora ? 1 : a.hora > b.hora ? -1 : a.id < b.id ? 1 : -1));
+  const votacoes = ordenadas.map((v) => ({
+    id: v.id, data: v.data, titulo: v.descricao || 'Votação nominal do Plenário', tipo: classificarVotacao(v.descricao),
+    aprovacao: v.aprovacao, sim: v.sim, nao: v.nao, outros: v.outros,
+    fonte: `${API}/votacoes/${v.id}`
+  }));
+  const deputados = {};
+  for (const i of itens) {
+    let linha = '';
+    for (const v of ordenadas) {
+      const reg = tipoDoVoto.get(v.id);
+      if (reg && reg.has(i.id)) {
+        const t = reg.get(i.id);
+        linha += t ? (LETRA_DO_VOTO[t] || 'X') : 'X';
+      } else linha += i.desde && v.data < i.desde ? '_' : '-';
+    }
+    deputados[i.id] = linha;
+  }
+  return { ano, geradoEm: hoje.toISOString(), codigos: CODIGOS_VOTO, votacoes, deputados };
+}
+
+/** Busca na API a matéria (sigla, número, ementa) de cada votação. Se falhar, a votação segue só com o texto oficial. */
+export async function enriquecerVotos(json, votos, paralelo = 6) {
+  let falhas = 0;
+  await emLotes(votos.votacoes, paralelo, async (v) => {
+    try {
+      const det = (await json(`${API}/votacoes/${encodeURIComponent(v.id)}`)).dados || {};
+      const p = (det.proposicoesAfetadas || [])[0];
+      if (p) {
+        v.materia = `${p.siglaTipo} ${p.numero}${p.ano ? '/' + p.ano : ''}`;
+        if (p.ementa) v.resumo = String(p.ementa).trim();
+        v.portal = `https://www.camara.leg.br/propostas-legislativas/${p.id}`;
+        const t = classificarVotacao(v.titulo, p.siglaTipo);
+        v.tipo = t;
+      }
+    } catch (e) { falhas++; }
+  });
+  return falhas;
 }

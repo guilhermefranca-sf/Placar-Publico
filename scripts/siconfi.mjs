@@ -187,12 +187,14 @@ export function notaExecutivo(contas, esfera, exercicio) {
     comp.push({ k: 'divida', s: scoreDivida(contas.divida, lim.divida),
       f: `Dívida consolidada líquida de ${contas.divida.toLocaleString('pt-BR')}% da receita corrente líquida. O limite é ${lim.divida}%.` });
   }
-  if (e && e.esperado) {
-    comp.push({ k: 'entregas', s: scoreEntregas(e.feitas, e.esperado),
-      f: `Entregou ${e.feitas} dos ${e.esperado} relatórios fiscais obrigatórios de ${exercicio} ao Tesouro Nacional.` });
-  }
+  // Os relatórios entregues não entram na nota: ficam só como informação, na aba Prestação de contas.
+  const contasPublicas = {
+    pessoal: contas.pessoal ?? null, divida: contas.divida ?? null,
+    limitePessoal: lim.pessoal, limiteDivida: lim.divida, rgf: contas.rgf ?? null,
+    entregas: e && e.esperado ? { feitas: e.feitas, esperado: e.esperado, rreo: e.rreo, rgf: e.rgf, dca: e.dca } : null
+  };
   const nota = mediaPonderada(comp.map((c) => ({ peso: pesoDe('executivos', c.k), s: c.s })), METODO.executivos.minComponentes);
   return nota == null
-    ? { nota: null, comp, motivo: `O Tesouro Nacional não tem os relatórios fiscais de ${exercicio} desta administração.` }
-    : { nota, comp };
+    ? { nota: null, comp, contas: contasPublicas, motivo: `O Tesouro Nacional não tem os relatórios fiscais de ${exercicio} desta administração.` }
+    : { nota, comp, contas: contasPublicas };
 }

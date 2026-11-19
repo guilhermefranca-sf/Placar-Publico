@@ -31,19 +31,19 @@ const CARGOS = {
   },
   governadores: {
     rotulo: 'Governadores', singular: 'Governador(a)', nota: true,
-    lead: 'A nota olha as contas do governo estadual: gasto com pessoal, dívida e relatórios fiscais entregues ao Tesouro Nacional.'
+    lead: 'O índice olha as contas do governo estadual: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal.'
   },
   prefeitos: {
     rotulo: 'Prefeitos', singular: 'Prefeito(a)', nota: true,
-    lead: 'A nota olha as contas da prefeitura: gasto com pessoal, dívida e relatórios fiscais entregues ao Tesouro Nacional.'
+    lead: 'O índice olha as contas da prefeitura: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal.'
   },
   estaduais: {
     rotulo: 'Deputados estaduais', singular: 'Deputado(a) estadual', nota: false,
-    lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). A nota ainda não existe: veja o motivo abaixo.'
+    lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). O índice ainda não existe: veja o motivo abaixo.'
   },
   vereadores: {
     rotulo: 'Vereadores', singular: 'Vereador(a)', nota: false,
-    lead: 'Lista dos vereadores eleitos em cada município. A nota ainda não existe: veja o motivo abaixo.'
+    lead: 'Lista dos vereadores eleitos em cada município. O índice ainda não existe: veja o motivo abaixo.'
   }
 };
 // Tipos de proposição: PL, PEC etc. As siglas fora desta lista aparecem como vieram da API.
@@ -169,7 +169,7 @@ async function buscarTudo(caminho, maxPaginas = 15) {
 const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtNota = n => (n == null ? '—' : nf1.format(n));
 const faixaNota = n => (n == null ? 'sem' : n >= 70 ? 'alta' : n >= 40 ? 'media' : 'baixa');
-const rotuloFaixa = n => ({ alta: 'nota alta', media: 'nota média', baixa: 'nota baixa', sem: 'sem nota' })[faixaNota(n)];
+const rotuloFaixa = n => ({ alta: 'índice alto', media: 'índice médio', baixa: 'índice baixo', sem: 'sem índice' })[faixaNota(n)];
 
 function dataHoraBR(iso) {
   const d = new Date(iso);
@@ -245,8 +245,70 @@ function mostrarErro(el, mensagem, aoTentar) {
   $('[data-tentar]', el).addEventListener('click', aoTentar);
 }
 
-function notaHtml(n, grande = false) {
-  const f = faixaNota(n);
-  if (n == null) return html`<span class="nota-num n-sem ${grande ? 'nota-grande' : ''}" title="Sem nota"><small>sem nota</small></span>`;
-  return html`<span class="nota-num n-${f} ${grande ? 'nota-grande' : ''}" title="${rotuloFaixa(n)}: ${fmtNota(n)} de 100">${fmtNota(n)}</span>`;
+/* ---------- Ícones (traços simples, herdam a cor do texto) ---------- */
+const ICONES = {
+  inicio: 'M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  comparar: 'M12 3v18M8 21h8M7 7h10M7 7l-3 7a3 3 0 0 0 6 0zM17 7l-3 7a3 3 0 0 0 6 0z',
+  noticias: 'M4 5h13a1 1 0 0 1 1 1v13H6a2 2 0 0 1-2-2zM18 9h2v8a2 2 0 0 1-2 2M7 9h8M7 13h8M7 16h5',
+  mais: 'M5 12h.01M12 12h.01M19 12h.01',
+  busca: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3',
+  seta: 'M9 6l6 6-6 6',
+  voltar: 'M15 6l-6 6 6 6',
+  ok: 'M5 12l5 5 9-10',
+  coracao: 'M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z',
+  capelo: 'M2 9l10-5 10 5-10 5zM6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5',
+  escudo: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4',
+  grafico: 'M4 20V10M10 20V4M16 20v-8M22 20H2',
+  lampada: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
+  moedas: 'M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
+  pessoas: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-7 7-7s7 3 7 7M17 4a4 4 0 0 1 0 7M22 21c0-3-2-5.5-5-6.5',
+  relogio: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  predio: 'M4 21V8l8-5 8 5v13M9 21v-6h6v6M4 21h16',
+  chave: 'M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z',
+  arquivo: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
+  externo: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',
+  cadeado: 'M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3',
+  olho: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  calendario: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
+  urna: 'M4 13h16v7H4zM8 13l-1-4h10l-1 4M9 5l3 4 3-4',
+  cifrao: 'M12 3v18M16 7.5C16 6 14.2 5 12 5S8 6 8 8s1.8 2.7 4 3 4 1 4 3-1.8 3-4 3-4-1-4-2.5'
+};
+const icone = (nome, tam = 22) => html`<svg class="ico" width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONES[nome] || ''}"/></svg>`;
+
+/* ---------- Mensagens padrão (regra de verificação) ---------- */
+const MSG_INDISPONIVEL = 'Informação não disponível ou ainda não confirmada em fonte oficial.';
+const MSG_SEM_VOTACAO = 'Não há votação nominal registrada para esta matéria nesta etapa.';
+
+const indisponivel = (extra = '') => html`<div class="indisp" role="note">${icone('info', 20)}<div><strong>${MSG_INDISPONIVEL}</strong>${extra ? html`<p>${extra}</p>` : ''}</div></div>`;
+
+/* ---------- Selos: de onde vem cada número ----------
+   oficial   = valor que a fonte oficial publica, sem conta nossa
+   calculado = conta feita pelo Placar Público sobre dados oficiais (proporção, soma, média)
+   indice    = o índice de 0 a 100, que é uma regra nossa, explicada na Metodologia   */
+const NOMES_SELO = { oficial: 'Dado oficial', calculado: 'Calculado', indice: 'Índice do Placar' };
+const selo = (origem, natureza = '') => html`<span class="selo selo-${origem}" title="${origem === 'oficial' ? 'Valor publicado pela fonte oficial, sem conta nossa.' : origem === 'calculado' ? 'Conta feita pelo Placar Público com dados oficiais. A regra está na Metodologia.' : 'Índice criado pelo Placar Público. Não é um dado oficial.'}">${NOMES_SELO[origem]}${natureza ? ' · ' + natureza : ''}</span>`;
+
+const fonteLinha = (fonte, atualizadoEm, url = '') => html`<p class="fonte-linha">${icone('arquivo', 14)}<span>Fonte: ${url ? html`<a href="${url}" target="_blank" rel="noopener">${fonte}</a>` : fonte}${atualizadoEm ? ` · atualizado em ${dataHoraBR(atualizadoEm)}` : ''}</span></p>`;
+
+/* ---------- Anel de nota ---------- */
+function anel(nota, { tam = 56, esp = 6, rotulo = false, escuro = false } = {}) {
+  const f = faixaNota(nota);
+  const r = (tam - esp) / 2, c = 2 * Math.PI * r;
+  const pct = nota == null ? 0 : Math.max(0, Math.min(100, nota));
+  const num = nota == null ? '—' : fmtNota(nota);
+  const fonteNum = Math.round(tam * (nota == null ? 0.3 : (num.length > 3 ? 0.27 : 0.3)));
+  return html`<span class="anel anel-${f} ${escuro ? 'anel-escuro' : ''}" style="width:${tam}px;height:${tam}px" role="img" aria-label="${nota == null ? 'Sem índice' : `Índice ${fmtNota(nota)} de 100, ${rotuloFaixa(nota)}`}">
+    <svg width="${tam}" height="${tam}" viewBox="0 0 ${tam} ${tam}" aria-hidden="true">
+      <circle class="anel-trilho" cx="${tam / 2}" cy="${tam / 2}" r="${r}" fill="none" stroke-width="${esp}"/>
+      <circle class="anel-valor" cx="${tam / 2}" cy="${tam / 2}" r="${r}" fill="none" stroke-width="${esp}" stroke-linecap="round" stroke-dasharray="${(c * pct / 100).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 ${tam / 2} ${tam / 2})"/>
+    </svg>
+    <span class="anel-num" style="font-size:${fonteNum}px">${num}${rotulo && nota != null ? html`<small>/100</small>` : ''}</span>
+  </span>`;
 }
+const notaHtml = (n, grande = false) => anel(n, { tam: grande ? 96 : 48, esp: grande ? 8 : 5, rotulo: grande });
+
+/* Abas de cada tipo de perfil. [chave, rótulo]. Endereços antigos continuam funcionando. */
+const ABAS_FEDERAL = [['visao', 'Visão geral'], ['historico', 'Histórico de mandatos'], ['projetos', 'Projetos'], ['votos', 'Como votou?'], ['emendas', 'Emendas'], ['gastos', 'Gastos'], ['fiscalizacao', 'Fiscalização'], ['noticias', 'Notícias'], ['fontes', 'Fontes']];
+const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['economia', 'Economia e orçamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['obras', 'Obras'], ['gastos', 'Gastos'], ['planejamento', 'Planejamento'], ['contas', 'Prestação de contas'], ['fontes', 'Fontes']];
+const ABAS_ANTIGAS = { nota: 'visao', votacoes: 'votos', presenca: 'visao' };
