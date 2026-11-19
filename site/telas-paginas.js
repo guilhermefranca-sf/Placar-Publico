@@ -49,7 +49,7 @@ function viewMetodologia() {
     <div class="cartao"><ul class="pontos">
       <li><strong>Prefeitos e governadores:</strong> a nota ainda não considera saúde, educação, obras e serviços, porque não há dado oficial comparável e atualizado para todas as cidades.</li>
       <li><strong>Quem está no cargo:</strong> a lista de prefeitos, governadores, deputados estaduais e vereadores vem do TSE e mostra quem foi <em>eleito</em>. Renúncia, cassação, afastamento e suplentes que assumiram não aparecem.</li>
-      <li><strong>Prefeituras:</strong> o município do TSE é ligado ao do Tesouro pelo nome e pelo estado. Quando não há correspondência exata, a pessoa fica sem nota, em vez de arriscar uma nota errada.</li>
+      <li><strong>Prefeituras:</strong> o município do TSE é ligado ao do Tesouro pelo nome e pelo estado. Quando os dois órgãos escrevem o nome um pouco diferente (por exemplo "Assú" e "Açu"), só é aceito o município do mesmo estado que for claramente o mais parecido. Se houver dúvida ou empate, a pessoa fica sem nota, em vez de arriscar uma nota errada.</li>
       <li><strong>Em tempo real?</strong> Não exatamente. Os dados são atualizados todo dia (os do TSE e do Tesouro, toda semana). As abas Projetos, Votações, Presença e Gastos dos deputados federais consultam a Câmara na hora em que você abre.</li>
     </ul></div>
 

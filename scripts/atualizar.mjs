@@ -14,7 +14,7 @@ import { buscar, gravarJson, lerJsonSeExistir, lerDoZip, arredondar } from './ut
 import { METODO, atribuirPosicoes } from './nota.mjs';
 import { gerarFederais } from './federais.mjs';
 import { gerarEleitos, anosVigentes, UFS } from './tse.mjs';
-import { carregarEntes, indexarEntes, acharMunicipio, gerarContas, notaExecutivo } from './siconfi.mjs';
+import { carregarEntes, indexarEntes, acharMunicipio, acharMunicipioParecido, gerarContas, notaExecutivo } from './siconfi.mjs';
 
 const DIAS_ENTRE_ATUALIZACOES_PESADAS = 7;
 
@@ -107,21 +107,37 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
         const entes = await carregarEntes(fontes.json);
         indice = indexarEntes(entes);
         const alvos = new Map();
+        let pelaSemelhanca = 0;
         for (const uf of UFS) {
-          for (const p of eleitos.prefeitos[uf] || []) {
+          const lista = eleitos.prefeitos[uf] || [];
+          const usados = new Set();
+          for (const p of lista) {
             p._ente = acharMunicipio(indice, uf, p.municipio);
-            if (p._ente) alvos.set(p._ente.cod_ibge, p._ente);
+            if (p._ente) usados.add(p._ente.cod_ibge);
           }
+          // Nomes escritos diferente no TSE e no Tesouro: só aceita um parecido sem empate.
+          for (const p of lista) {
+            if (p._ente) continue;
+            p._ente = acharMunicipioParecido(indice, uf, p.municipio, usados);
+            if (p._ente) { usados.add(p._ente.cod_ibge); pelaSemelhanca++; }
+          }
+          for (const p of lista) if (p._ente) alvos.set(p._ente.cod_ibge, p._ente);
         }
+        if (pelaSemelhanca) log(`Tesouro: ${pelaSemelhanca} prefeituras ligadas por nome parecido.`);
         for (const g of eleitos.governadores) {
           g._ente = indice.estados.get(g.uf) || null;
           if (g._ente) alvos.set(g._ente.cod_ibge, g._ente);
+          else log(`Tesouro: não achei o estado ${g.uf} na lista de entes.`);
         }
         log(`Tesouro: consultando as contas de ${alvos.size} prefeituras e estados (${exercicio}). Isto leva alguns minutos...`);
-        contas = await gerarContas({ json: fontes.json, entes: [...alvos.values()], exercicio, aoAndar: (f, t) => log(`  ${f} de ${t}`) });
-        const comErro = Object.values(contas).filter((c) => c.erro).length;
-        meta.fontes.siconfi = { ok: true, atualizadoEm: hoje.toISOString(), exercicio, entes: alvos.size, comErro };
-        log(`Tesouro: pronto. ${comErro} consultas com erro.`);
+        contas = await gerarContas({ json: fontes.json, entes: [...alvos.values()], exercicio,
+          aoAndar: (f, t) => log(typeof f === 'string' ? `  ${f}` : `  ${f} de ${t}`) });
+        const falhas = Object.values(contas).filter((c) => c.erro);
+        const comErro = falhas.length;
+        const tiposDeErro = {};
+        for (const c of falhas) { const k = c.erro.replace(/https?:\/\/\S+/g, '').replace(/\d+/g, '#').slice(0, 60); tiposDeErro[k] = (tiposDeErro[k] || 0) + 1; }
+        meta.fontes.siconfi = { ok: true, atualizadoEm: hoje.toISOString(), exercicio, entes: alvos.size, comErro, pelaSemelhanca };
+        log(`Tesouro: pronto. ${comErro} consultas com erro.${comErro ? ' Tipos: ' + JSON.stringify(tiposDeErro) : ''}`);
       } catch (e) {
         log(`Tesouro: FALHOU. ${e.message}`);
         meta.fontes.siconfi = { ...(antigo.fontes?.siconfi || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
