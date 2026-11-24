@@ -8,18 +8,19 @@ export const METODO = {
   versao: 1,
   escala: 'O índice vai de 0 a 100.',
 
-  // Deputados federais: o que cada um fez no ano em curso.
+  // Deputados federais: o que cada um fez nos últimos 4 anos civis (hoje, 2023 a 2026; o ano em curso conta até hoje).
   federais: {
-    minSessoes: 20, // quem tem menos sessões que isso no mandato do ano fica sem nota
+    janelaAnos: 4,
+    minSessoes: 20, // quem tem menos sessões que isso desde a primeira presença na janela fica sem índice
     componentes: [
       { k: 'pres', rotulo: 'Presença no Plenário', peso: 30,
-        regra: 'Porcentagem das sessões deliberativas do Plenário com presença registrada, contadas desde a primeira presença do deputado no ano.' },
+        regra: 'Porcentagem das sessões deliberativas do Plenário com presença registrada nos últimos 4 anos, contadas desde a primeira presença do deputado nesse período. Sessões em que o deputado estava licenciado ou afastado, segundo o histórico oficial da Câmara, não contam contra ele.' },
       { k: 'vot', rotulo: 'Votações nominais', peso: 25,
-        regra: 'Porcentagem das votações nominais do Plenário em que o deputado registrou voto. Votação simbólica não entra, pois não tem voto individual.' },
+        regra: 'Porcentagem das votações nominais do Plenário, nos últimos 4 anos, em que o deputado registrou voto. Votação simbólica não entra, pois não tem voto individual. Votações durante licença ou afastamento não contam contra ele.' },
       { k: 'proj', rotulo: 'Projetos apresentados', peso: 20,
-        regra: 'Projetos de lei, PECs e outras propostas de sua autoria (sozinho ou com outros) por mês de mandato, comparados aos dos demais deputados. Requerimentos, indicações e emendas não contam. Mede quantidade, não qualidade.' },
+        regra: 'Projetos de lei, PECs e outras propostas de sua autoria (sozinho ou com outros) apresentados nos últimos 4 anos, por mês de exercício, comparados aos dos demais deputados. Requerimentos, indicações e emendas não contam. Mede quantidade, não qualidade nem aprovação.' },
       { k: 'cota', rotulo: 'Uso da cota parlamentar', peso: 25,
-        regra: 'Gasto mensal da cota parlamentar (valor do documento menos glosa), comparado ao dos colegas do mesmo estado. Quem gasta menos fica com índice maior. Comparar dentro do estado evita punir quem mora longe de Brasília.' }
+        regra: 'Gasto mensal da cota parlamentar nos últimos 4 anos (valor do documento menos glosa, dividido pelos meses de exercício), comparado ao dos colegas do mesmo estado. Quem gasta menos fica com índice maior. Comparar dentro do estado evita punir quem mora longe de Brasília.' }
     ]
   },
 

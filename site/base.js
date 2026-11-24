@@ -90,6 +90,13 @@ const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BR
 const fmtNum = new Intl.NumberFormat('pt-BR');
 const plural = (n, um, varios) => `${fmtNum.format(n)} ${n === 1 ? um : varios}`;
 
+/* Período que o índice dos deputados federais cobre: "últimos 4 anos (2023 a 2026)". Arquivo antigo, sem janela: só o ano. */
+function periodoAvaliado(dado, curto = false) {
+  const j = dado && dado.janela;
+  if (!j || j.de === j.ate) return String((dado && dado.ano) || '');
+  return curto ? `${j.de} a ${j.ate}` : `últimos ${j.anos} anos (${j.de} a ${j.ate})`;
+}
+
 function dataBR(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
@@ -277,7 +284,7 @@ const ICONES = {
 const icone = (nome, tam = 22) => html`<svg class="ico" width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONES[nome] || ''}"/></svg>`;
 
 /* ---------- Mensagens padrão (regra de verificação) ---------- */
-const MSG_INDISPONIVEL = 'Informação não disponível ou ainda não confirmada em fonte oficial.';
+const MSG_INDISPONIVEL = 'Dado não encontrado ou não confirmado';
 const MSG_SEM_VOTACAO = 'Não há votação nominal registrada para esta matéria nesta etapa.';
 
 const indisponivel = (extra = '') => html`<div class="indisp" role="note">${icone('info', 20)}<div><strong>${MSG_INDISPONIVEL}</strong>${extra ? html`<p>${extra}</p>` : ''}</div></div>`;
@@ -310,5 +317,6 @@ const notaHtml = (n, grande = false) => anel(n, { tam: grande ? 96 : 48, esp: gr
 
 /* Abas de cada tipo de perfil. [chave, rótulo]. Endereços antigos continuam funcionando. */
 const ABAS_FEDERAL = [['visao', 'Visão geral'], ['historico', 'Histórico de mandatos'], ['projetos', 'Projetos'], ['votos', 'Como votou?'], ['emendas', 'Emendas'], ['gastos', 'Gastos'], ['fiscalizacao', 'Fiscalização'], ['noticias', 'Notícias'], ['fontes', 'Fontes']];
-const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['economia', 'Economia e orçamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['obras', 'Obras'], ['gastos', 'Gastos'], ['planejamento', 'Planejamento'], ['contas', 'Prestação de contas'], ['fontes', 'Fontes']];
+const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['servicos', 'Serviços básicos'], ['saneamento', 'Saneamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['infraestrutura', 'Infraestrutura'], ['obras', 'Obras'], ['economia', 'Economia'], ['orcamento', 'Orçamento'], ['transparencia', 'Transparência'], ['fontes', 'Fontes']];
 const ABAS_ANTIGAS = { nota: 'visao', votacoes: 'votos', presenca: 'visao' };
+const ABAS_ANTIGAS_EXECUTIVO = { gastos: 'orcamento', contas: 'transparencia', planejamento: 'orcamento' };

@@ -19,8 +19,8 @@ const LINHAS_COMPARAR = {
     { rot: 'Índice do Placar', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
     { rot: 'Presença nas sessões', ic: 'pessoas', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'pres') || {}).s, fmt: v => dec(v) + '%', max: 100 },
     { rot: 'Votações em que registrou voto', ic: 'urna', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'vot') || {}).s, fmt: v => dec(v) + '%', max: 100 },
-    { rot: 'Projetos apresentados no ano', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.projetos : null), fmt: v => fmtNum.format(v) },
-    { rot: 'Cota parlamentar gasta no ano', ic: 'moedas', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.gasto : null), fmt: v => reaisCurto(v) },
+    { rot: 'Projetos apresentados (4 anos)', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.projetos : null), fmt: v => fmtNum.format(v) },
+    { rot: 'Cota parlamentar gasta (4 anos)', ic: 'moedas', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.gasto : null), fmt: v => reaisCurto(v) },
     { rot: 'Anos de exercício efetivo na Câmara', ic: 'relogio', origem: 'calculado', natureza: 'quantitativo', valor: (i, x) => (x.hist ? x.hist.anosEfetivos : null), fmt: v => dec(v, 1) }
   ],
   executivos: [

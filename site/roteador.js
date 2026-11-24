@@ -7,6 +7,7 @@
      #/federais  #/governadores  #/prefeitos  #/estaduais  #/vereadores
      #/federais/{id}[/{aba}]         perfil de deputado federal
      #/{governadores|prefeitos}/{UF}/{id}[/{aba}]   perfil de governador e prefeito
+     #/presidente[/{aba}]            perfil do Presidente da República
      #/{estaduais|vereadores}/{UF}/{id}             ficha de eleito
      #/comparar[/{cargo}/{A}/{B}]    comparar duas pessoas
      #/noticias   #/mais   #/metodologia   #/fontes   #/verificacao
@@ -31,6 +32,7 @@ function rota() {
   let chave = null, aba = null;
   if (a === 'federais' && /^\d+$/.test(b || '')) { chave = `federais/${b}`; aba = c; }
   else if ((a === 'governadores' || a === 'prefeitos') && b && c && UFS.includes(b)) { chave = `${a}/${b}/${c}`; aba = d; }
+  else if (a === 'presidente') { chave = 'presidente'; aba = b; }
   if (chave && perfilAtual && perfilAtual.chave === chave) { perfilAtual.trocarAba(aba); return; }
 
   const token = ++rotaToken;
@@ -46,6 +48,7 @@ function rota() {
   if (a === 'comparar') { marcarMenu('comparar'); return viewComparar(partes.slice(1), token); }
 
   marcarMenu('inicio');
+  if (a === 'presidente') return viewPresidente(b, token);
   if (!a || !CARGOS[a]) return viewCargo('federais', token, true);
   if (a === 'federais') {
     if (/^\d+$/.test(b || '')) return viewPerfil('federais', '', b, c, token);

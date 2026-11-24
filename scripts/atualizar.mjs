@@ -1,23 +1,32 @@
 // Rotina de atualização. Roda todo dia no GitHub (veja .github/workflows/atualizar.yml)
 // e grava os arquivos que o site lê, na pasta site/dados.
 //
-//   Todo dia:         deputados federais (Câmara)
+//   Todo dia:         deputados federais (Câmara): índice dos últimos 4 anos; só o ano em curso é lido de novo
 //   A cada 7 dias:    eleitos (TSE) e contas de prefeituras e estados (Tesouro Nacional)
 //
 // Para forçar tudo agora:  node scripts/atualizar.mjs --forcar
 
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buscar, gravarJson, lerJsonSeExistir, lerDoZip, arredondar } from './util.mjs';
 import { METODO, atribuirPosicoes } from './nota.mjs';
-import { gerarFederais, enriquecerVotos } from './federais.mjs';
+import { gerarFederais, enriquecerVotos, listarDeputados, JANELA_ANOS } from './federais.mjs';
 import { gerarHistoricos } from './historico.mjs';
 import { gerarEleitos, anosVigentes, UFS } from './tse.mjs';
 import { carregarEntes, indexarEntes, acharMunicipio, acharMunicipioParecido, gerarContas, notaExecutivo } from './siconfi.mjs';
+import { atualizarAdministracoes, atualizarIbge, atualizarPresidente, atualizarExecutivos } from './executivos.mjs';
 
 const DIAS_ENTRE_ATUALIZACOES_PESADAS = 7;
+// O GitHub corta a rotina em 180 minutos. A coleta dos anos de contas usa só o tempo que sobrar até este limite.
+const LIMITE_TOTAL_MIN = Number(process.env.PLACAR_LIMITE_MIN ?? 150);
+const ORCAMENTO_SERIES_MIN = Number(process.env.PLACAR_ORCAMENTO_MIN ?? 100);
+
+/** Trocas de gestor no meio do mandato, com fontes (arquivo escrito à mão em scripts/curadoria). */
+export function lerTrocasDeGestao() {
+  try { return JSON.parse(readFileSync(fileURLToPath(new URL('./curadoria/trocas-de-gestao.json', import.meta.url)), 'utf-8')).trocas || []; } catch { return []; }
+}
 
 const idadeEmDias = (iso, hoje) => (iso ? (hoje - new Date(iso)) / 86400000 : Infinity);
 const media = (v) => (v.length ? arredondar(v.reduce((a, b) => a + b, 0) / v.length, 1) : null);
@@ -69,7 +78,8 @@ export function exercicioDoTesouro(hoje) {
   return hoje.getMonth() < 2 ? hoje.getFullYear() - 2 : hoje.getFullYear() - 1;
 }
 
-export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), forcar = false, soFederais = false, log = console.log }) {
+export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), forcar = false, soFederais = false, log = console.log, trocas = lerTrocasDeGestao(), limiteTotalMs = LIMITE_TOTAL_MIN * 60000, orcamentoSeriesMs = ORCAMENTO_SERIES_MIN * 60000 }) {
+  const inicioDaRotina = Date.now();
   mkdirSync(saida, { recursive: true });
   const antigo = lerJsonSeExistir(path.join(saida, 'meta.json')) || {};
   const meta = {
@@ -81,12 +91,39 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
   const dest = lerJsonSeExistir(path.join(saida, 'destaques.json')) || {};
   const arquivo = (n) => path.join(saida, n);
 
+  // ---------- TSE e Tesouro: a cada 7 dias ----------
+  const precisaPesada = !soFederais && (forcar || !antigo.fontes?.siconfi?.ok || !antigo.fontes?.tse?.ok || !antigo.fontes?.historico?.ok ||
+    idadeEmDias(antigo.fontes.siconfi.atualizadoEm, hoje) >= DIAS_ENTRE_ATUALIZACOES_PESADAS ||
+    !existsSync(arquivo('governadores.json')));
+
+  // ---------- Câmara: histórico de mandatos (semanal) ----------
+  // Vem ANTES do índice porque o índice usa as licenças e afastamentos de cada deputado.
+  if (precisaPesada) {
+    try {
+      const ids = (lerJsonSeExistir(arquivo('federais.json'))?.itens || await listarDeputados(fontes.json)).map((i) => String(i.id));
+      log('Câmara: lendo o histórico de mandatos de cada deputado...');
+      const r = await gerarHistoricos({ json: fontes.json, ids, pasta: saida, hoje, aoAndar: (f, t) => log(`  histórico ${f} de ${t}`) });
+      meta.fontes.historico = { ok: r.falhas < r.total, atualizadoEm: hoje.toISOString(), total: r.total, falhas: r.falhas, semHistorico: r.semHistorico };
+      log(`Câmara: histórico gravado (${r.total - r.falhas} de ${r.total}).`);
+    } catch (e) {
+      log(`Câmara (histórico): FALHOU. ${e.message}`);
+      meta.fontes.historico = { ...(antigo.fontes?.historico || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
+    }
+  }
+
   // ---------- Câmara: todo dia ----------
   let fedHoje = null;
   const anoCamara = hoje.getMonth() < 1 ? hoje.getFullYear() - 1 : hoje.getFullYear();
   try {
-    log(`Câmara: calculando o índice dos deputados federais (${anoCamara})...`);
-    const { votos, ...fed } = await gerarFederais({ fontes, ano: anoCamara, hoje });
+    log(`Câmara: calculando o índice dos deputados federais (${anoCamara - JANELA_ANOS + 1} a ${anoCamara})...`);
+    // Anos fechados ficam guardados em dados/anos/ e só são lidos de novo quando se pede "refazer tudo".
+    const cache = {
+      ler: (a) => lerJsonSeExistir(arquivo(`anos/federais-${a}.json`)),
+      gravar: (a, obj) => gravarJson(arquivo(`anos/federais-${a}.json`), obj)
+    };
+    // Licenças e afastamentos (histórico oficial da Câmara) não contam contra o deputado.
+    const pausasDe = (id) => (lerJsonSeExistir(arquivo(`deputados/${id}.json`)) || {}).pausas || [];
+    const { votos, ...fed } = await gerarFederais({ fontes, ano: anoCamara, janela: JANELA_ANOS, hoje, cache, usarCache: !forcar, pausasDe, aoAndar: (m) => log('  ' + m) });
     fedHoje = fed;
     gravarJson(arquivo('federais.json'), fed);
     try {
@@ -99,33 +136,16 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
       log(`Câmara: ${votos.votacoes.length} votações nominais gravadas${falhasResumo ? ` (${falhasResumo} sem resumo da matéria)` : ''}.`);
     } catch (e) { log(`Câmara: votos não gravados. ${e.message}`); }
     dest.federais = destaques(fed.itens);
-    meta.fontes.camara = { ok: true, atualizadoEm: hoje.toISOString(), ano: anoCamara, sessoes: fed.sessoes, votacoes: fed.votacoes };
+    meta.fontes.camara = { ok: true, atualizadoEm: hoje.toISOString(), ano: anoCamara, janela: fed.janela, sessoes: fed.sessoes, votacoes: fed.votacoes, sessoesAno: fed.sessoesAno, votacoesAno: fed.votacoesAno };
     meta.cargos.federais = { total: fed.total, comNota: fed.comNota, media: fed.media };
-    log(`Câmara: ${fed.comNota} de ${fed.total} deputados com nota (${fed.sessoes} sessões, ${fed.votacoes} votações nominais).`);
+    log(`Câmara: ${fed.comNota} de ${fed.total} deputados com índice (${fed.sessoes} sessões e ${fed.votacoes} votações nominais em ${fed.janela.de} a ${fed.janela.ate}).`);
   } catch (e) {
     log(`Câmara: FALHOU. ${e.message}`);
     meta.fontes.camara = { ...(antigo.fontes?.camara || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
   }
 
-  // ---------- TSE e Tesouro: a cada 7 dias ----------
-  const precisaPesada = !soFederais && (forcar || !antigo.fontes?.siconfi?.ok || !antigo.fontes?.tse?.ok || !antigo.fontes?.historico?.ok ||
-    idadeEmDias(antigo.fontes.siconfi.atualizadoEm, hoje) >= DIAS_ENTRE_ATUALIZACOES_PESADAS ||
-    !existsSync(arquivo('governadores.json')));
-
+  let contasDoExercicio = null;
   if (precisaPesada) {
-    // Histórico de mandatos dos deputados federais (Câmara): quase não muda, por isso é semanal.
-    try {
-      const fedAtual = fedHoje || lerJsonSeExistir(arquivo('federais.json'));
-      if (!fedAtual) throw new Error('sem a lista de deputados federais');
-      log('Câmara: lendo o histórico de mandatos de cada deputado...');
-      const r = await gerarHistoricos({ json: fontes.json, ids: fedAtual.itens.map((i) => i.id), pasta: saida, hoje, aoAndar: (f, t) => log(`  histórico ${f} de ${t}`) });
-      meta.fontes.historico = { ok: r.falhas < r.total, atualizadoEm: hoje.toISOString(), total: r.total, falhas: r.falhas, semHistorico: r.semHistorico };
-      log(`Câmara: histórico gravado (${r.total - r.falhas} de ${r.total}).`);
-    } catch (e) {
-      log(`Câmara (histórico): FALHOU. ${e.message}`);
-      meta.fontes.historico = { ...(antigo.fontes?.historico || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
-    }
-
     let eleitos = null;
     try {
       log('TSE: baixando a lista oficial de eleitos...');
@@ -180,6 +200,7 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
         log(`Tesouro: consultando as contas de ${alvos.size} prefeituras e estados (${exercicio}). Isto leva alguns minutos...`);
         contas = await gerarContas({ json: fontes.json, entes: [...alvos.values()], exercicio,
           aoAndar: (f, t) => log(typeof f === 'string' ? `  ${f}` : `  ${f} de ${t}`) });
+        contasDoExercicio = contas;
         const falhas = Object.values(contas).filter((c) => c.erro);
         const comErro = falhas.length;
         const tiposDeErro = {};
@@ -232,6 +253,33 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
         log(`Prefeitos com nota: ${comNota}. Governadores com nota: ${gComNota}.`);
       }
     }
+  }
+
+  // ---------- Perfil ampliado de prefeitos, governadores e presidente ----------
+  // Cada passo é isolado: se um falhar, o índice e os perfis que já existiam continuam no ar.
+  if (!soFederais) {
+    const velha = (nome) => forcar || !antigo.fontes?.[nome]?.ok || idadeEmDias(antigo.fontes[nome].atualizadoEm, hoje) >= DIAS_ENTRE_ATUALIZACOES_PESADAS;
+    const passo = async (nome, rotulo, fn) => {
+      try {
+        const r = await fn();
+        meta.fontes[nome] = { ...(r.ok ? {} : { erro: r.motivo || (r.erros || []).join('; ').slice(0, 300) }), ...r, atualizadoEm: hoje.toISOString() };
+        if (!r.ok) meta.fontes[nome].ok = false;
+        log(`${rotulo}: ${r.ok ? 'pronto' : 'sem resultado'}.`);
+      } catch (e) {
+        log(`${rotulo}: FALHOU. ${e.message}`);
+        meta.fontes[nome] = { ...(antigo.fontes?.[nome] || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
+      }
+    };
+    if (velha('administracoes')) await passo('administracoes', 'Gestões', () => atualizarAdministracoes({ baixarZip, pasta: saida, hoje, trocas, log }));
+    if (velha('ibge')) await passo('ibge', 'IBGE', () => atualizarIbge({ json: fontes.json, pasta: saida, hoje, log }));
+    await passo('presidente', 'Presidente', () => atualizarPresidente({ json: fontes.json, pasta: saida, hoje, log }));
+    const exercicio = exercicioDoTesouro(hoje);
+    const sobra = Math.min(orcamentoSeriesMs, limiteTotalMs - (Date.now() - inicioDaRotina));
+    const prefill = contasDoExercicio ? { [exercicio]: Object.fromEntries(Object.entries(contasDoExercicio).map(([k, c]) => [k, c.erro ? { erro: c.erro } : { rgf: c.rgf, pessoal: c.pessoal, divida: c.divida }])) } : {};
+    await passo('series', 'Séries por ano', async () => {
+      const r = await atualizarExecutivos({ json: fontes.json, pasta: saida, hoje, exercicio, orcamentoMs: sobra, prefill, log });
+      return { ok: !r.erro, ...r };
+    });
   }
 
   gravarJson(arquivo('destaques.json'), dest);

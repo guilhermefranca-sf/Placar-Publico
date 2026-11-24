@@ -84,8 +84,8 @@ function cartaoIndice(item, grupo) {
     })}</ul>
     ${faltam ? html`<p class="nota">Quando um critério não tem dado, o índice usa só os que existem, mantendo os pesos proporcionais.</p>` : ''}
     <p class="nota">${grupo === 'federais'
-      ? 'O índice compara o que o deputado fez no ano com as regras do método. Mede quantidade e cumprimento de deveres, não a qualidade do mandato. Quem assumiu durante o ano é avaliado só pelo período em que esteve no cargo.'
-      : 'O índice olha as contas do último ano fechado, que pertencem à administração daquele ano. Não mede saúde, educação, obras ou serviços, e não aponta irregularidade.'}
+      ? 'O índice compara o que o deputado fez nos últimos 4 anos com as regras do método. Mede quantidade e cumprimento de deveres, não a qualidade do mandato nem se os projetos foram aprovados. Quem assumiu depois é avaliado só desde a primeira presença, e licenças e afastamentos registrados pela Câmara não contam contra o deputado.'
+      : 'O índice olha só gasto com pessoal e dívida do último ano fechado, que pertencem à administração daquele ano. Não mede saúde, educação, obras ou serviços, e não aponta irregularidade. Os demais indicadores estão nas abas, como informação, sem nota automática.'}
       <a href="#/metodologia">Como é calculado</a>.</p>
   </section>`;
 }
@@ -138,9 +138,10 @@ function viewPerfil(cargo, uf, id, aba, token) {
 }
 
 /* Liga as abas de um perfil: troca de painel sem recarregar a página. */
-function ligarAbas({ chave, abas, abaInicial, desenharPainel, token }) {
+function ligarAbas({ chave, abas, abaInicial, desenharPainel, token, antigas = ABAS_ANTIGAS }) {
   const validas = abas.map(([k]) => k);
-  let aba = validas.includes(ABAS_ANTIGAS[abaInicial] || abaInicial) ? (ABAS_ANTIGAS[abaInicial] || abaInicial) : 'visao';
+  const alias = k => (validas.includes(k) ? k : (antigas[k] || k));
+  let aba = validas.includes(alias(abaInicial)) ? alias(abaInicial) : 'visao';
   let contador = 0;
   const mostrarAba = () => {
     const meu = ++contador;
@@ -155,7 +156,7 @@ function ligarAbas({ chave, abas, abaInicial, desenharPainel, token }) {
   perfilAtual = {
     chave,
     trocarAba(nova) {
-      aba = validas.includes(ABAS_ANTIGAS[nova] || nova) ? (ABAS_ANTIGAS[nova] || nova) : 'visao';
+      aba = validas.includes(alias(nova)) ? alias(nova) : 'visao';
       mostrarAba();
       const barra = $('.abas-barra');
       if (barra) { const t = barra.getBoundingClientRect().top; if (t < 70) window.scrollTo(0, window.scrollY + t - 68); }
@@ -173,7 +174,7 @@ const legislaturaDoDia = (d = new Date()) => Math.floor((d.getFullYear() - (d.ge
 const periodoLegislatura = n => ({ ini: 1995 + 4 * (n - 50), fim: 1999 + 4 * (n - 50) });
 const ROTULO_TIPO_VOTACAO = { principal: 'Proposta principal', emenda: 'Emenda', destaque: 'Destaque', substitutivo: 'Substitutivo', requerimento: 'Requerimento', outro: 'Outra votação' };
 const CHAVE_LETRA = { S: 'sim', N: 'nao', A: 'abst', O: 'obstr', P: 'art17', X: 'secreto', '-': 'ausente', _: 'ausente' };
-const ROTULO_LETRA = { S: 'Sim', N: 'Não', A: 'Abstenção', O: 'Obstrução', P: 'Presidindo a sessão', X: 'Voto secreto', '-': 'Sem voto registrado', _: 'Antes da 1ª presença no ano' };
+const ROTULO_LETRA = { S: 'Sim', N: 'Não', A: 'Abstenção', O: 'Obstrução', P: 'Presidindo a sessão', X: 'Voto secreto', '-': 'Sem voto registrado', _: 'Antes da 1ª presença no período' };
 
 const popCurta = n => (n >= 1e6 ? `${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi` : n >= 1e4 ? `${Math.round(n / 1e3).toLocaleString('pt-BR')} mil` : fmtNum.format(n));
 const dec = (n, c = 1) => (n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c }));
@@ -256,12 +257,12 @@ function painelVisaoFederal(el, ctx) {
     ${licenca ? html`<section class="cartao cartao-aviso" style="margin-top:0"><h3>Afastado(a) do exercício</h3>
       <p>${licenca.motivo || 'Afastamento'} desde ${dataBR(licenca.ini)}, segundo o histórico oficial da Câmara. Enquanto está afastado(a), quem ocupa a vaga é o suplente, e o índice mostrado vale para o período em que houve presença registrada.</p></section>` : ''}
     ${e ? html`<h2 class="painel-titulo">Destaques do mandato</h2>
-    <p class="painel-sub">Números de ${dado.ano}, calculados com os dados abertos da Câmara. O selo diz se o valor é oficial ou calculado.</p>
+    <p class="painel-sub">Números dos ${periodoAvaliado(dado)}, calculados com os dados abertos da Câmara. O selo diz se o valor é oficial ou calculado.</p>
     <div class="tiles">
-      ${tile({ icone: 'pessoas', cor: 'verde', rotulo: 'Presença', valor: comp.pres ? dec(comp.pres.s) + '%' : '—', legenda: `${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${dataBR(item.desde)}`, origem: 'calculado', natureza: 'proporcional' })}
-      ${tile({ icone: 'urna', cor: 'azul', rotulo: 'Votações nominais', valor: `${e.votos[0]} de ${e.votos[1]}`, legenda: 'votações do Plenário em que registrou voto no período', origem: 'calculado', natureza: 'proporcional', href: `#/federais/${id}/votos` })}
-      ${tile({ icone: 'arquivo', cor: 'laranja', rotulo: 'Projetos', valor: fmtNum.format(e.projetos), legenda: `projetos e propostas apresentados em ${dado.ano}, como autor ou coautor`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/projetos` })}
-      ${tile({ icone: 'moedas', cor: 'roxo', rotulo: 'Cota parlamentar', valor: reaisCurto(e.gasto), legenda: `gasto em ${dado.ano} (${fmtBRL.format(e.gasto)}, valor dos documentos menos glosas)`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/gastos` })}
+      ${tile({ icone: 'pessoas', cor: 'verde', rotulo: 'Presença', valor: comp.pres ? dec(comp.pres.s) + '%' : '—', legenda: `${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${dataBR(item.desde)}${e.licenca && e.licenca.sessoes ? `, sem contar ${e.licenca.sessoes} em licença` : ''}`, origem: 'calculado', natureza: 'proporcional' })}
+      ${tile({ icone: 'urna', cor: 'azul', rotulo: 'Votações nominais', valor: `${e.votos[0]} de ${e.votos[1]}`, legenda: `votações do Plenário em que registrou voto desde ${dataBR(item.desde)}`, origem: 'calculado', natureza: 'proporcional', href: `#/federais/${id}/votos` })}
+      ${tile({ icone: 'arquivo', cor: 'laranja', rotulo: 'Projetos', valor: fmtNum.format(e.projetos), legenda: `projetos e propostas apresentados desde ${dataBR(item.desde)}, como autor ou coautor`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/projetos` })}
+      ${tile({ icone: 'moedas', cor: 'roxo', rotulo: 'Cota parlamentar', valor: reaisCurto(e.gasto), legenda: `gasto desde ${dataBR(item.desde)} (${fmtBRL.format(e.gasto)}, valor dos documentos menos glosas)`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/gastos` })}
     </div>` : html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Destaques do mandato</h2>
       <p class="painel-sub">${item.motivo || MSG_INDISPONIVEL}</p></section>`}
 
@@ -479,7 +480,7 @@ async function painelComoVotou(el, ctx, vale) {
   mostrar(el, html`
     <section class="cartao" style="margin-top:0">
       <h2 class="painel-titulo">Como votou? ${selo('oficial')}</h2>
-      <p class="painel-sub">${plural(registros.length, 'votação nominal', 'votações nominais')} do Plenário em ${v.ano}. Votações simbólicas, em que ninguém registra voto individual, não entram. O voto é o que a Câmara registrou; o Placar Público não interpreta nem dá valor ao voto.</p>
+      <p class="painel-sub">${plural(registros.length, 'votação nominal', 'votações nominais')} do Plenário em ${v.ano}. O índice conta os últimos 4 anos, mas aqui aparece só o ano em curso. Votações simbólicas, em que ninguém registra voto individual, não entram. O voto é o que a Câmara registrou; o Placar Público não interpreta nem dá valor ao voto.</p>
       <p><strong style="font-size:1.4rem">${votou}</strong> de ${noPeriodo} <span class="painel-sub">votações do período em que registrou voto ${selo('calculado', 'proporcional')}</span></p>
       <div class="pilha" role="img" aria-label="Distribuição dos votos">${chaves.map(k => html`<span class="cor-${CHAVE_LETRA[k]}" style="flex:${cont[k]}" title="${ROTULO_LETRA[k]}: ${cont[k]}"></span>`)}</div>
       <ul class="legenda">${chaves.map(k => html`<li><i class="cor-${CHAVE_LETRA[k]}"></i>${ROTULO_LETRA[k]} <b>${cont[k]}</b></li>`)}${fora ? html`<li><i class="cor-ausente"></i>Antes da 1ª presença <b>${fora}</b></li>` : ''}</ul>
@@ -660,7 +661,7 @@ function painelFontesFed(el, ctx) {
   const f = (DADOS.meta && DADOS.meta.fontes) || {};
   const quando = x => (x && x.atualizadoEm ? dataHoraBR(x.atualizadoEm) : '—');
   const linhas = [
-    ['Índice, presença, votos no ano, projetos do ano, cota', 'Arquivos abertos da Câmara (eventos, presenças, votações, proposições, cota parlamentar)', 'https://dadosabertos.camara.leg.br/swagger/api.html', 'Todo dia', quando(f.camara)],
+    ['Índice, presença, votos, projetos e cota (últimos 4 anos)', 'Arquivos abertos da Câmara (eventos, presenças, votações, proposições, cota parlamentar)', 'https://dadosabertos.camara.leg.br/swagger/api.html', 'Todo dia', quando(f.camara)],
     ['Como votou?', 'Dados Abertos da Câmara (votações e votos)', `${API}/votacoes`, 'Todo dia', quando(f.camara)],
     ['Histórico de mandatos, Mesa Diretora, dados cadastrais', 'Dados Abertos da Câmara (histórico do deputado, legislaturas)', `${API}/deputados/${ctx.id}/historico`, 'Toda semana', quando(f.historico)],
     ['Projetos por ano, lista de proposições, presença detalhada, gastos, comissões', 'Dados Abertos da Câmara, consultados na hora em que a aba é aberta', `${API}/deputados/${ctx.id}`, 'Ao vivo', 'na hora'],
@@ -689,8 +690,8 @@ async function painelPresidencia(el, ctx, vale) {
       <h2 class="painel-titulo">Gestão da Presidência da Câmara ${selo('oficial')}</h2>
       <p class="painel-sub">Presidente da Câmara dos Deputados${presidencia.ini ? ` desde ${dataBR(presidencia.ini)}` : ''}, na Mesa Diretora da ${presidencia.leg}ª legislatura. Este painel mostra o que a Câmara toda fez no ano, o que é o campo de atuação do cargo.</p>
       <div class="numeros">
-        <div class="numero"><span>Sessões deliberativas do Plenário</span><strong>${fmtNum.format(dado.sessoes || 0)}</strong><small>encerradas em ${dado.ano}</small>${selo('calculado', 'quantitativo')}</div>
-        <div class="numero"><span>Votações nominais</span><strong>${fmtNum.format(dado.votacoes || 0)}</strong><small>do Plenário em ${dado.ano}</small></div>
+        <div class="numero"><span>Sessões deliberativas do Plenário</span><strong>${fmtNum.format(dado.sessoesAno ?? dado.sessoes ?? 0)}</strong><small>encerradas em ${dado.ano}</small>${selo('calculado', 'quantitativo')}</div>
+        <div class="numero"><span>Votações nominais</span><strong>${fmtNum.format(dado.votacoesAno ?? dado.votacoes ?? 0)}</strong><small>do Plenário em ${dado.ano}</small></div>
         <div class="numero"><span>Aprovadas / rejeitadas</span><strong>${aprov == null ? '—' : `${aprov} / ${rejeit}`}</strong><small>entre as votações nominais, pelo resultado oficial</small></div>
       </div>
     </section>
@@ -701,76 +702,7 @@ async function painelPresidencia(el, ctx, vale) {
     <section class="cartao cartao-aviso"><h3>Atenção</h3><p>Os números acima descrevem a Casa, não são uma nota da pessoa que a preside. O índice dela, na Visão geral, mede só a atuação como deputado(a). <a href="#/federais/${id}">Voltar à Visão geral</a>.</p></section>`);
 }
 
-/* =====================================================================
-   Governador e prefeito
-   ===================================================================== */
-
-async function viewExecutivo(cargo, uf, id, abaInicial, token) {
-  const c = CARGOS[cargo];
-  const voltar = [`#/${cargo}`, c.rotulo];
-  mostrar(app, esqueletoPerfil(...voltar));
-  let dado;
-  try {
-    dado = await lerArquivo(cargo === 'governadores' ? 'governadores.json' : `prefeitos-${uf}.json`);
-  } catch (e) {
-    console.error(e);
-    if (token === rotaToken) { mostrar(app, html`<div id="erro"></div>`); mostrarErro($('#erro'), 'Não foi possível carregar esta página.', () => viewExecutivo(cargo, uf, id, abaInicial, token)); }
-    return;
-  }
-  if (token !== rotaToken) return;
-  const item = dado.itens.find(i => i.id === String(id));
-  if (!item) return naoEncontrado(...voltar, c.singular);
-
-  const ehPref = cargo === 'prefeitos';
-  document.title = `${item.nome} · Placar Público`;
-  const totalNacional = ehPref ? ((DADOS.meta.cargos || {}).prefeitos || {}).comNota : dado.comNota;
-  const lugar = ehPref ? `${item.municipio}/${uf}` : NOMES_UF[uf] || uf;
-  const selos = [html`<span class="distintivo">Eleito(a) em ${dado.ano ?? ''}</span>`];
-  if (item.rank != null) selos.push(html`<span class="distintivo distintivo-neutro">${fmtNum.format(item.rank)}º entre ${fmtNum.format(totalNacional)}${ehPref ? ' no país' : ''}</span>`);
-  if (ehPref && item.rank != null) {
-    const doEstado = dado.itens.filter(i => i.nota != null);
-    selos.push(html`<span class="distintivo distintivo-neutro">${fmtNum.format(doEstado.filter(i => i.rank < item.rank).length + 1)}º entre ${fmtNum.format(doEstado.length)} em ${uf}</span>`);
-  }
-
-  mostrar(app, html`
-    <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
-    ${heroPerfil({ item, cargoTxt: `${c.singular} de ${lugar}`, meta: `${item.partido || 'Sem partido'}${item.urna && item.urna !== item.nome ? ' · nome de urna: ' + item.urna : ''}`, selos })}
-    ${barraAbas(ABAS_EXECUTIVO, `#/${cargo}/${uf}/${id}`)}
-    <section class="painel" id="painel" role="tabpanel" aria-live="polite"></section>`);
-
-  const ctx = { item, dado, cargo, uf, id, ehPref, lugar, c };
-  const PAINEIS = {
-    visao: painelVisaoExec, economia: painelEconomia, gastos: painelGastosExec, contas: painelContas, fontes: painelFontesExec,
-    saude: el => mostrar(el, painelEmDesenvolvimento({ titulo: 'Saúde', ic: 'coracao', oQue: `Quanto ${ehPref ? 'a prefeitura' : 'o governo estadual'} aplica em saúde e como isso se compara ao mínimo exigido pela Constituição.`, fontes: 'Siconfi (Relatório Resumido da Execução Orçamentária, anexo de saúde), SIOPS do Ministério da Saúde.' })),
-    educacao: el => mostrar(el, painelEmDesenvolvimento({ titulo: 'Educação', ic: 'capelo', oQue: `Quanto ${ehPref ? 'a prefeitura' : 'o governo estadual'} aplica em educação e como isso se compara ao mínimo exigido pela Constituição.`, fontes: 'Siconfi (Relatório Resumido da Execução Orçamentária, anexo de manutenção e desenvolvimento do ensino), SIOPE do FNDE.' })),
-    seguranca: el => mostrar(el, painelEmDesenvolvimento({ titulo: 'Segurança', ic: 'escudo', oQue: 'Indicadores de criminalidade e gasto em segurança pública.', fontes: 'Sinesp do Ministério da Justiça, secretarias estaduais de segurança.' })),
-    obras: el => mostrar(el, painelEmDesenvolvimento({ titulo: 'Obras', ic: 'chave', oQue: 'Obras em andamento e concluídas, com valor e prazo.', fontes: 'ObrasGov.br e portais de transparência dos entes.' })),
-    planejamento: el => mostrar(el, painelEmDesenvolvimento({ titulo: 'Planejamento', ic: 'calendario', oQue: 'Metas do plano plurianual, da lei de diretrizes e da lei orçamentária, e o quanto foi executado.', fontes: 'PPA, LDO e LOA publicados pelo próprio ente e pelo Siconfi.' }))
-  };
-  ligarAbas({
-    chave: `${cargo}/${uf}/${id}`, abas: ABAS_EXECUTIVO, abaInicial, token,
-    desenharPainel: (aba, painel, vale) => { mostrar(painel, html``); (PAINEIS[aba] || PAINEIS.visao)(painel, ctx, vale); }
-  });
-}
-
-function painelVisaoExec(el, ctx) {
-  const { item, dado, ehPref } = ctx;
-  const k = item.contas;
-  const exerc = dado.exercicio ?? '—';
-  mostrar(el, html`
-    ${k ? html`<h2 class="painel-titulo">Destaques das contas</h2>
-    <p class="painel-sub">Contas de ${exerc}, o último ano fechado no Tesouro Nacional. Pertencem à administração daquele ano.</p>
-    <div class="tiles">
-      ${tile({ icone: 'pessoas', cor: 'azul', rotulo: 'Gasto com pessoal', valor: k.pessoal != null ? dec(k.pessoal) + '%' : '—', legenda: k.pessoal != null ? `da receita corrente líquida · limite legal ${k.limitePessoal}%` : MSG_INDISPONIVEL, origem: k.pessoal != null ? 'oficial' : '', natureza: 'proporcional', href: `#/${ctx.cargo}/${ctx.uf}/${ctx.id}/gastos` })}
-      ${tile({ icone: 'cifrao', cor: 'laranja', rotulo: 'Dívida líquida', valor: k.divida != null ? dec(k.divida) + '%' : '—', legenda: k.divida != null ? `da receita corrente líquida · limite ${k.limiteDivida}%` : MSG_INDISPONIVEL, origem: k.divida != null ? 'oficial' : '', natureza: 'proporcional', href: `#/${ctx.cargo}/${ctx.uf}/${ctx.id}/economia` })}
-      ${tile({ icone: 'predio', cor: 'verde', rotulo: 'População', valor: item.populacao ? popCurta(item.populacao) : '—', legenda: item.populacao ? `${fmtNum.format(item.populacao)} habitantes (Tesouro Nacional)` : MSG_INDISPONIVEL, origem: item.populacao ? 'oficial' : '', natureza: 'contexto' })}
-      ${tile({ icone: 'arquivo', cor: 'roxo', rotulo: 'Prestação de contas', valor: k.entregas ? `${k.entregas.feitas} de ${k.entregas.esperado}` : '—', legenda: k.entregas ? 'relatórios obrigatórios entregues ao Tesouro' : MSG_INDISPONIVEL, origem: k.entregas ? 'calculado' : '', natureza: 'quantitativo', href: `#/${ctx.cargo}/${ctx.uf}/${ctx.id}/contas` })}
-    </div>` : html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Destaques das contas</h2>
-      <p class="painel-sub">${item.motivo || MSG_INDISPONIVEL}</p></section>`}
-    ${fichaCartao(item)}
-    ${cartaoIndice(item, 'executivos')}
-    ${avisoEleitos(dado.ano ?? '', dado.exercicio ? `As contas usadas no índice são do exercício de ${dado.exercicio}, o último ano fechado no Tesouro Nacional.` : '')}`);
-}
+/* Governador, prefeito e presidente: veja telas-executivo.js */
 
 function fichaCartao(item) {
   const ficha = fichaHtml([
@@ -779,72 +711,6 @@ function fichaCartao(item) {
     ['Ocupação declarada', item.ocupacao]
   ]);
   return ficha.s ? html`<section class="cartao"><h2 class="painel-titulo">Quem é ${selo('oficial')}</h2>${ficha}<p class="nota" style="margin-top:8px">Dados declarados ao TSE na candidatura.</p></section>` : html``;
-}
-
-function painelEconomia(el, ctx) {
-  const { item, dado, ehPref } = ctx;
-  const k = item.contas;
-  mostrar(el, html`<section class="cartao" style="margin-top:0">
-    <h2 class="painel-titulo">Dívida consolidada líquida ${k && k.divida != null ? selo('oficial', 'proporcional') : ''}</h2>
-    <p class="painel-sub">O que ${ehPref ? 'a prefeitura' : 'o estado'} deve, descontado o que tem em caixa e aplicações, comparado com a receita corrente líquida (a receita que entra todo ano, sem contar o que é repassado a outros entes). O limite vem de resolução do Senado Federal.</p>
-    ${k && k.divida != null ? medidor({ valor: k.divida, limite: k.limiteDivida, legenda: `Contas de ${dado.exercicio ?? '—'}. Um valor negativo significa que há mais dinheiro em caixa do que dívida.` }) : indisponivel(item.motivo || 'Não há o relatório de dívida desta administração no Tesouro Nacional.')}
-    ${fonteLinha('Tesouro Nacional, Siconfi (Relatório de Gestão Fiscal, anexo 2)', DADOS.meta && DADOS.meta.fontes && DADOS.meta.fontes.siconfi && DADOS.meta.fontes.siconfi.atualizadoEm, 'https://siconfi.tesouro.gov.br')}
-  </section>
-  <section class="cartao">
-    <h2 class="painel-titulo">Receitas, despesas e orçamento</h2>
-    ${indisponivel('Valores de arrecadação, despesa por função e execução do orçamento ainda não estão integrados. O Placar Público só mostra o que leu de uma fonte oficial.')}
-    <p class="nota"><strong>Fonte oficial em estudo:</strong> Siconfi (Relatório Resumido da Execução Orçamentária).</p>
-  </section>`);
-}
-
-function painelGastosExec(el, ctx) {
-  const { item, dado, ehPref } = ctx;
-  const k = item.contas;
-  const lim = k ? k.limitePessoal : null;
-  mostrar(el, html`<section class="cartao" style="margin-top:0">
-    <h2 class="painel-titulo">Gasto com pessoal ${k && k.pessoal != null ? selo('oficial', 'proporcional') : ''}</h2>
-    <p class="painel-sub">Quanto da receita corrente líquida ${ehPref ? 'a prefeitura' : 'o governo estadual'} gastou com salários, aposentadorias e encargos do Poder Executivo. A Lei de Responsabilidade Fiscal fixa um teto, e marca dois pontos de atenção antes dele: o limite de alerta (90% do teto) e o prudencial (95%).</p>
-    ${k && k.pessoal != null ? medidor({ valor: k.pessoal, limite: lim, marcas: [{ v: +(lim * 0.9).toFixed(2), rot: '' }, { v: +(lim * 0.95).toFixed(2), rot: '' }], legenda: `Contas de ${dado.exercicio ?? '—'}. Limite de alerta: ${dec(lim * 0.9, 2)}% · prudencial: ${dec(lim * 0.95, 2)}% · máximo: ${lim}%.` }) : indisponivel(item.motivo || 'Não há o relatório de gestão fiscal desta administração no Tesouro Nacional.')}
-    ${fonteLinha('Tesouro Nacional, Siconfi (Relatório de Gestão Fiscal, anexo 1)', DADOS.meta && DADOS.meta.fontes && DADOS.meta.fontes.siconfi && DADOS.meta.fontes.siconfi.atualizadoEm, 'https://siconfi.tesouro.gov.br')}
-  </section>
-  <section class="cartao">
-    <h2 class="painel-titulo">Outros gastos</h2>
-    ${indisponivel('A despesa por área (saúde, educação, obras...) e os maiores contratos ainda não estão integrados.')}
-  </section>`);
-}
-
-function painelContas(el, ctx) {
-  const { item, dado } = ctx;
-  const e = item.contas && item.contas.entregas;
-  const modelo = item.contas && item.contas.rgf;
-  mostrar(el, html`<section class="cartao" style="margin-top:0">
-    <h2 class="painel-titulo">Prestação de contas ao Tesouro Nacional ${e ? selo('calculado', 'quantitativo') : ''}</h2>
-    <p class="painel-sub">Relatórios que a lei obriga ${ctx.ehPref ? 'a prefeitura' : 'o governo estadual'} a entregar a cada ano. Esta é uma informação de transparência: ela <strong>não entra no índice</strong>.</p>
-    ${e ? html`<p><strong style="font-size:1.6rem">${e.feitas}</strong> de ${e.esperado} relatórios entregues em ${dado.exercicio ?? '—'}</p>
-      <div class="barra" role="img" aria-label="${e.feitas} de ${e.esperado}"><span style="width:${e.esperado ? e.feitas / e.esperado * 100 : 0}%"></span></div>
-      <div class="rolagem"><table class="tabela" style="margin-top:12px"><thead><tr><th>Relatório</th><th class="num">Entregues</th><th>O que é</th></tr></thead><tbody>
-        <tr><td>RREO</td><td class="num">${e.rreo} de 6</td><td>Resumido da Execução Orçamentária: um por bimestre.</td></tr>
-        <tr><td>RGF</td><td class="num">${e.rgf} de ${e.esperado - 7}</td><td>Gestão Fiscal: ${modelo === 'S2' ? 'versão semestral (municípios pequenos)' : 'um por quadrimestre'}.</td></tr>
-        <tr><td>DCA</td><td class="num">${e.dca} de 1</td><td>Declaração de Contas Anuais, o balanço do ano.</td></tr>
-      </tbody></table></div>
-      <p class="nota">Só conta relatório homologado ou retificado no Siconfi. Um relatório pode estar atrasado por problema técnico; o número não aponta irregularidade.</p>`
-      : indisponivel(item.motivo || 'Não há o extrato de entregas desta administração no Tesouro Nacional.')}
-    ${fonteLinha('Tesouro Nacional, Siconfi (extrato de entregas)', DADOS.meta && DADOS.meta.fontes && DADOS.meta.fontes.siconfi && DADOS.meta.fontes.siconfi.atualizadoEm, 'https://siconfi.tesouro.gov.br')}
-  </section>`);
-}
-
-function painelFontesExec(el, ctx) {
-  const f = (DADOS.meta && DADOS.meta.fontes) || {};
-  const quando = x => (x && x.atualizadoEm ? dataHoraBR(x.atualizadoEm) : '—');
-  mostrar(el, html`<section class="cartao" style="margin-top:0">
-    <h2 class="painel-titulo">De onde vem cada informação</h2>
-    <div class="rolagem"><table class="tabela"><thead><tr><th>O quê</th><th>Fonte</th><th class="curto">Atualização</th><th class="curto">Última vez</th></tr></thead><tbody>
-      <tr><td>Quem foi eleito, partido, idade, escolaridade, ocupação</td><td><a href="https://dadosabertos.tse.jus.br" target="_blank" rel="noopener">Dados Abertos do TSE</a></td><td class="curto">Toda semana</td><td class="curto">${quando(f.tse)}</td></tr>
-      <tr><td>Gasto com pessoal, dívida, relatórios entregues, população</td><td><a href="https://siconfi.tesouro.gov.br" target="_blank" rel="noopener">Siconfi, Tesouro Nacional</a></td><td class="curto">Toda semana</td><td class="curto">${quando(f.siconfi)}</td></tr>
-      <tr><td>Saúde, educação, segurança, obras, planejamento</td><td>Ainda sem fonte integrada</td><td class="curto">—</td><td class="curto">—</td></tr>
-    </tbody></table></div>
-    <p class="nota">O índice é uma regra do Placar Público aplicada às contas; veja a <a href="#/metodologia">Metodologia</a>. ${ctx.dado.exercicio ? `As contas são do exercício de ${ctx.dado.exercicio}.` : ''}</p>
-  </section>`);
 }
 
 /* =====================================================================

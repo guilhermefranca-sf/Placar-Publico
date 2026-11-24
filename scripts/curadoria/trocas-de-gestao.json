@@ -1,0 +1,266 @@
+{
+  "versao": 1,
+  "atualizadoEm": "2026-11-23",
+  "aviso": "Trocas de gestor no meio do mandato que NÃO aparecem nos arquivos do TSE (renúncia, sucessão por vice, interinidade). Cada linha traz as fontes consultadas. A maior parte vem de reportagens, não de diários oficiais: o site mostra isso e pede que a pessoa confirme no site oficial do governo. Nada aqui é preenchido de memória: onde a fonte não diz a data, o campo fica vazio; onde as fontes divergem, a divergência é registrada.",
+  "divergenciasGerais": [
+    "Contagem de governadores que renunciaram em 2026: a IstoÉ e o Congresso em Foco falam em 11; a lista que a própria IstoÉ publica tem 11 estados (AC, AM, DF, ES, GO, MT, MG, PA, PB, RJ, RR); o Diário do Pará e outros veículos falam em 10 (sem o RJ, onde ainda não há governador definitivo)."
+  ],
+  "trocas": [
+    {
+      "id": "gov-ac-2026", "cargo": "governador", "uf": "AC",
+      "saiu": { "nome": "Gladson Cameli", "partido": "PP" },
+      "entrou": { "nome": "Mailza Assis", "partido": "PP", "vinculo": "a fonte não informa o vínculo" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": [],
+      "nota": "A IstoÉ cita a renúncia de Gladson Cameli sem dizer quem assumiu; o Congresso em Foco cita Mailza Assis como nova governadora sem dizer o vínculo."
+    },
+    {
+      "id": "gov-am-2026", "cargo": "governador", "uf": "AM",
+      "saiu": { "nome": "Wilson Lima", "partido": "União Brasil" },
+      "entrou": { "nome": "Roberto Cidade", "partido": "União Brasil", "vinculo": "a fonte não informa o vínculo (a IstoÉ diz que o vice, Tadeu de Souza, também deixou o cargo)" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar outro cargo nas eleições de 2026 (a IstoÉ diz que o cargo pretendido não foi esclarecido)",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": [],
+      "nota": "O Congresso em Foco lista Roberto Cidade como novo governador; a IstoÉ o aponta como sucessor."
+    },
+    {
+      "id": "gov-df-2026", "cargo": "governador", "uf": "DF",
+      "saiu": { "nome": "Ibaneis Rocha", "partido": "MDB" },
+      "entrou": { "nome": "Celina Leão", "partido": "PP", "vinculo": "vice-governadora" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-es-2026", "cargo": "governador", "uf": "ES",
+      "saiu": { "nome": "Renato Casagrande", "partido": "PSB" },
+      "entrou": { "nome": "Ricardo Ferraço", "partido": "MDB", "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-go-2026", "cargo": "governador", "uf": "GO",
+      "saiu": { "nome": "Ronaldo Caiado", "partido": "PSD" },
+      "entrou": { "nome": "Daniel Vilela", "partido": "MDB", "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar a Presidência da República",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-mt-2026", "cargo": "governador", "uf": "MT",
+      "saiu": { "nome": "Mauro Mendes", "partido": "União Brasil" },
+      "entrou": { "nome": "Otaviano Pivetta", "partido": null, "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": ["Partido do novo governador: a IstoÉ diz PP; o Congresso em Foco diz Republicanos. O site não afirma o partido."]
+    },
+    {
+      "id": "gov-mg-2026", "cargo": "governador", "uf": "MG",
+      "saiu": { "nome": "Romeu Zema", "partido": "Novo" },
+      "entrou": { "nome": "Mateus Simões", "partido": "PSD", "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar a Presidência da República",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-pa-2026", "cargo": "governador", "uf": "PA",
+      "saiu": { "nome": "Helder Barbalho", "partido": "MDB" },
+      "entrou": { "nome": "Hana Ghassan", "partido": "MDB", "vinculo": "vice-governadora" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-pb-2026", "cargo": "governador", "uf": "PB",
+      "saiu": { "nome": "João Azevêdo", "partido": "PSB" },
+      "entrou": { "nome": "Lucas Ribeiro", "partido": "PP", "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": "2026-04-02", "dataAprox": null, "dataTexto": "2 de abril de 2026",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "Jovem Pan — Governadores que renunciaram para as eleições de 2026", "url": "https://jovempan.com.br/?p=2155" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "gov-rr-2026", "cargo": "governador", "uf": "RR",
+      "saiu": { "nome": "Antonio Denarium", "partido": "PP" },
+      "entrou": { "nome": "Edilson Damião", "partido": null, "vinculo": "vice-governador" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o Senado",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — 11 governadores renunciam ao cargo para disputar eleições", "url": "https://istoe.com.br/governadores-renuncia-eleicoes-2026" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": ["Partido do novo governador: a IstoÉ diz MDB; o Congresso em Foco diz Republicanos. O site não afirma o partido."]
+    },
+    {
+      "id": "gov-rj-2026", "cargo": "governador", "uf": "RJ",
+      "saiu": { "nome": "Cláudio Castro", "partido": "PL" },
+      "entrou": { "nome": "Ricardo Couto", "partido": null, "vinculo": "presidente do Tribunal de Justiça do RJ, governador interino por decisão do STF" },
+      "tipo": "renúncia", "motivo": "renúncia (23/03/2026), um dia antes de o TSE formar maioria pela inelegibilidade; o estado não tem vice-governador",
+      "situacao": "interino",
+      "data": "2026-03-23", "dataAprox": null, "dataTexto": "23 de março de 2026",
+      "confirmacao": "fonte oficial e imprensa",
+      "fontes": [
+        { "titulo": "STF — STF rejeita pedido da Alerj e mantém desembargador como governador interino do RJ", "url": "https://noticias.stf.jus.br/postsnoticias/stf-nega-pedido-da-alerj-e-mantem-desembargador-como-governador-interino-do-rio-de-janeiro/" },
+        { "titulo": "Agência Brasil — STF marca para 19 de agosto julgamento sobre sucessão no governo do RJ", "url": "https://agenciabrasil.ebc.com.br/justica/noticia/2026-07/stf-marca-para-19-de-agosto-julgamento-sobre-sucessao-no-governo-do-rj" },
+        { "titulo": "TNH1 (Folhapress) — Fachin adia julgamento do STF sobre mandato-tampão e governo interino no RJ (19/08/2026)", "url": "https://www.tnh1.com.br/noticia/nid/fachin-adia-julgamento-do-stf-sobre-mandato-tampao-e-governo-interino-no-rj/" }
+      ],
+      "divergencias": ["O presidente da Assembleia Legislativa (Douglas Ruas, PL) reivindica o cargo pela linha sucessória estadual; o STF manteve o presidente do TJ-RJ como interino."],
+      "nota": "Última notícia que encontramos: em 19/08/2026 o julgamento do STF sobre a sucessão foi retirado de pauta e Ricardo Couto seguiu como interino. Não verificamos o que aconteceu depois disso."
+    },
+
+    {
+      "id": "cap-rio-de-janeiro-2026", "cargo": "prefeito", "uf": "RJ", "municipio": "Rio de Janeiro",
+      "saiu": { "nome": "Eduardo Paes", "partido": "PSD" },
+      "entrou": { "nome": "Eduardo Cavaliere", "partido": "PSD", "vinculo": "vice-prefeito" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": ["A fonte escreve o sobrenome como 'Cavaliere' no texto e 'Cavalieri' na legenda de uma foto."]
+    },
+    {
+      "id": "cap-vitoria-2026", "cargo": "prefeito", "uf": "ES", "municipio": "Vitória",
+      "saiu": null,
+      "entrou": { "nome": "Cris Samorini", "partido": "PP", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-recife-2026", "cargo": "prefeito", "uf": "PE", "municipio": "Recife",
+      "saiu": { "nome": "João Campos", "partido": "PSB" },
+      "entrou": { "nome": "Victor Marques", "partido": "PCdoB", "vinculo": "vice-prefeito" },
+      "tipo": "renúncia", "motivo": "renúncia para disputar o governo do estado",
+      "data": "2026-04-02", "dataAprox": null, "dataTexto": "2 de abril de 2026",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "IstoÉ — Sete prefeitos de capitais deixam cargos e embalam disputa aos governos estaduais", "url": "https://istoe.com.br/prefeitos-renunciam-eleicoes-capitais-governos-estaduais" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    },
+    {
+      "id": "cap-sao-luis-2026", "cargo": "prefeito", "uf": "MA", "municipio": "São Luís",
+      "saiu": null,
+      "entrou": { "nome": "Esmênia Miranda", "partido": "PSD", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-joao-pessoa-2026", "cargo": "prefeito", "uf": "PB", "municipio": "João Pessoa",
+      "saiu": null,
+      "entrou": { "nome": "Leo Bezerra", "partido": "PSB", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-manaus-2026", "cargo": "prefeito", "uf": "AM", "municipio": "Manaus",
+      "saiu": null,
+      "entrou": { "nome": "Renato Júnior", "partido": "Avante", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-macapa-2026", "cargo": "prefeito", "uf": "AP", "municipio": "Macapá",
+      "saiu": null,
+      "entrou": { "nome": "Pedro DaLua", "partido": "União Brasil", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-rio-branco-2026", "cargo": "prefeito", "uf": "AC", "municipio": "Rio Branco",
+      "saiu": null,
+      "entrou": { "nome": "Alyson Beste", "partido": "PP", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": [],
+      "nota": "Grafia do nome conforme a fonte consultada; confira a grafia oficial."
+    },
+    {
+      "id": "cap-boa-vista-2026", "cargo": "prefeito", "uf": "RR", "municipio": "Boa Vista",
+      "saiu": null,
+      "entrou": { "nome": "Marcelo Zeitone", "partido": "PL", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [{ "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }],
+      "divergencias": []
+    },
+    {
+      "id": "cap-maceio-2026", "cargo": "prefeito", "uf": "AL", "municipio": "Maceió",
+      "saiu": { "nome": "João Henrique Caldas (JHC)", "partido": null },
+      "entrou": { "nome": "Rodrigo Cunha", "partido": "Podemos", "vinculo": "assumiu após renúncia do titular" },
+      "tipo": "renúncia", "motivo": "renúncia do titular para disputar outro cargo nas eleições de 2026",
+      "data": null, "dataAprox": "2026-04-04", "dataTexto": "até 4 de abril de 2026 (prazo legal de desincompatibilização)",
+      "confirmacao": "imprensa",
+      "fontes": [
+        { "titulo": "NSC Total — De olho em 2026: renúncias, pré-candidatos e a situação de Jorginho em SC", "url": "https://www.nsctotal.com.br/?p=7864090" },
+        { "titulo": "Congresso em Foco — Após renúncias, veja quem assume governos e prefeituras das capitais", "url": "https://www.congressoemfoco.com.br/noticia/117852/apos-renuncias-veja-quem-assume-governos-e-prefeituras-das-capitais" }
+      ],
+      "divergencias": []
+    }
+  ]
+}

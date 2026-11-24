@@ -38,7 +38,7 @@ function montarFaixas() {
       <a href="#/fontes">Como ver os dados reais</a>.</div></div>`);
   } else {
     const f = (DADOS.meta && DADOS.meta.fontes) || {};
-    const nomes = { camara: 'Câmara dos Deputados', tse: 'TSE (lista de eleitos)', siconfi: 'Tesouro Nacional (contas públicas)', historico: 'Câmara (histórico de mandatos)' };
+    const nomes = { camara: 'Câmara dos Deputados', tse: 'TSE (lista de eleitos)', siconfi: 'Tesouro Nacional (contas públicas)', historico: 'Câmara (histórico de mandatos)', administracoes: 'TSE (gestões dos últimos 48 meses)', ibge: 'IBGE (população, PIB e Censo)', presidente: 'Presidente (IBGE e Banco Central)', series: 'Tesouro Nacional (contas por ano)' };
     const falhas = Object.entries(nomes).filter(([k]) => f[k] && f[k].ok === false);
     if (falhas.length) {
       partes.push(html`<div class="faixa" role="status"><div class="cx">
@@ -90,7 +90,7 @@ function cartaoDestaque(cargo, it) {
 
 /* ---------- Cabeçalho do Início: título e escolha do cargo ---------- */
 
-const CARGOS_EM_BREVE = [['Presidente da República', 'Painel com economia, saúde, educação e segurança do mandato.'], ['Senadores', 'Mesmo painel dos deputados federais, com dados abertos do Senado.'], ['Presidentes da Câmara e do Senado', 'Aba de gestão da Casa: sessões, pauta e resultados.']];
+const CARGOS_EM_BREVE = [['Senadores', 'Mesmo painel dos deputados federais, com dados abertos do Senado.'], ['Presidentes da Câmara e do Senado', 'Aba de gestão da Casa: sessões, pauta e resultados.']];
 
 function cabecalhoInicio(cargo) {
   const metaCargos = (DADOS.meta && DADOS.meta.cargos) || {};
@@ -104,7 +104,7 @@ function cabecalhoInicio(cargo) {
     </section>
     <nav class="cargos-linha chips chips-rolagem" aria-label="Cargos">
       ${ORDEM_CARGOS.map(k => html`<a class="chip" href="#/${k}" aria-current="${k === cargo ? 'true' : 'false'}">${CARGOS[k].rotulo.replace('Deputados ', 'Dep. ')}${metaCargos[k] && metaCargos[k].total != null ? html`<b>${fmtNum.format(metaCargos[k].total)}</b>` : ''}</a>`)}
-      <span class="chip chip-bloq" title="Em preparação">${icone('cadeado', 15)}Presidente<b>em breve</b></span>
+      <a class="chip" href="#/presidente" aria-current="${cargo === 'presidente' ? 'true' : 'false'}">Presidente</a>
       <span class="chip chip-bloq" title="Em preparação">${icone('cadeado', 15)}Senadores<b>em breve</b></span>
     </nav>`;
 }
@@ -150,7 +150,7 @@ function resumoCargo(cargo, dados) {
   const total = dados.total ?? m.total;
   const comNota = dados.comNota ?? m.comNota;
   const dia = fonte && fonte.atualizadoEm ? new Date(fonte.atualizadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—';
-  const base = cargo === 'federais' ? `Câmara, dados de ${dados.ano}` : `Tesouro, contas de ${dados.exercicio ?? '—'}`;
+  const base = cargo === 'federais' ? `Câmara, ${periodoAvaliado(dados, true)}` : `Tesouro, contas de ${dados.exercicio ?? '—'}`;
   return html`<section class="resumo" aria-label="Resumo">
     <div class="resumo-item"><span>${cargo === 'federais' ? 'Em exercício' : 'Eleitos'}</span><strong>${fmtNum.format(total)}</strong><small>${total - comNota ? `${fmtNum.format(comNota)} com índice` : 'todos com índice'}</small></div>
     <div class="resumo-item"><span>Índice médio</span><strong>${fmtNota(m.media)}</strong><small>de 0 a 100</small></div>
@@ -200,7 +200,7 @@ function montarCargoComNota(cargo, dados) {
       <ul class="lista-pessoas" id="r-lista"></ul>
       <div class="mais-linha" id="r-mais"></div>
       <p class="nota">${c.singular === 'Deputado federal'
-        ? 'Quem aparece sem índice não tem dados suficientes no ano (por exemplo, assumiu o mandato há poucas semanas). Abra o perfil para ver o motivo.'
+        ? 'Quem aparece sem índice não tem dados suficientes no período avaliado (por exemplo, assumiu o mandato há poucas semanas). Abra o perfil para ver o motivo.'
         : 'Quem aparece sem índice não tem relatórios fiscais do último ano fechado no Tesouro Nacional, ou o município não foi encontrado na base. Abra o perfil para ver o motivo.'}
         A lista de eleitos vem do TSE e não registra substituições depois da eleição. <a href="#/metodologia">Como o índice é calculado</a>.</p>
     </section>`);

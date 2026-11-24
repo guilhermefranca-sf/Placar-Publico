@@ -54,15 +54,24 @@ export async function emLotes(itens, n, fn) {
 }
 
 /**
- * Lê um CSV do tipo usado pela Câmara e pelo TSE: separador ";" e textos entre aspas.
- * Devolve { ix, linhas }, onde ix[nomeDaColuna] é a posição da coluna.
+ * Percorre um CSV do tipo usado pela Câmara e pelo TSE (separador ";" e textos entre aspas) linha a linha,
+ * sem guardar todas as linhas na memória. Importante para os arquivos grandes (cota, votos, proposições).
+ * Devolve { ix } com a posição de cada coluna; aoLer(linha, ix) é chamado para cada linha de dados.
  */
-export function lerCsv(texto) {
+export function percorrerCsv(texto, aoLer) {
   if (texto.charCodeAt(0) === 0xfeff) texto = texto.slice(1);
-  const linhas = [];
+  let ix = null;
   let campo = '';
   let linha = [];
   let aspas = false;
+  const fechar = () => {
+    if (campo.endsWith('\r')) campo = campo.slice(0, -1);
+    linha.push(campo);
+    if (!ix) ix = Object.fromEntries(linha.map((c, i) => [c, i]));
+    else if (linha.length > 1) aoLer(linha, ix);
+    linha = [];
+    campo = '';
+  };
   const n = texto.length;
   for (let i = 0; i < n; i++) {
     const c = texto[i];
@@ -72,18 +81,21 @@ export function lerCsv(texto) {
       } else campo += c;
     } else if (c === '"') aspas = true;
     else if (c === ';') { linha.push(campo); campo = ''; }
-    else if (c === '\n') {
-      if (campo.endsWith('\r')) campo = campo.slice(0, -1);
-      linha.push(campo);
-      linhas.push(linha);
-      linha = [];
-      campo = '';
-    } else campo += c;
+    else if (c === '\n') fechar();
+    else campo += c;
   }
-  if (campo !== '' || linha.length) { linha.push(campo); linhas.push(linha); }
-  const cab = linhas.shift() || [];
-  const ix = Object.fromEntries(cab.map((c, i) => [c, i]));
-  return { ix, linhas: linhas.filter((l) => l.length > 1) };
+  if (campo !== '' || linha.length) fechar();
+  return { ix: ix || {} };
+}
+
+/**
+ * Lê um CSV inteiro para a memória. Devolve { ix, linhas }, onde ix[nomeDaColuna] é a posição da coluna.
+ * Para arquivos grandes, prefira percorrerCsv.
+ */
+export function lerCsv(texto) {
+  const linhas = [];
+  const { ix } = percorrerCsv(texto, (l) => linhas.push(l));
+  return { ix, linhas };
 }
 
 /** Lê um arquivo de dentro de um .zip usando o programa "unzip" (já vem no GitHub Actions). */

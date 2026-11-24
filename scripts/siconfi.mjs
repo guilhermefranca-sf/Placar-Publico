@@ -94,7 +94,7 @@ const urlRgf = (ente, exercicio, m, anexo) =>
   `&co_tipo_demonstrativo=${encodeURIComponent(m.tipo)}` +
   `&no_anexo=${encodeURIComponent(anexo)}&co_esfera=${esferaDaConsulta(ente)}&co_poder=E&id_ente=${ente.cod_ibge}`;
 
-async function itensOuVazio(json, url) {
+export async function itensOuVazio(json, url) {
   try { return (await json(url)).items || []; } catch (e) { if (/HTTP (400|404)/.test(e.message)) return []; throw e; }
 }
 
@@ -129,25 +129,25 @@ export function contarEntregas(itens) {
   return { feitas: nRreo + nRgf + nDca, esperado: 6 + rgfEsperado + 1, rreo: nRreo, rgf: nRgf, dca: nDca };
 }
 
+/** Pessoal e dívida (RGF) de um ano. Lança erro se a rede falhar. */
+export async function contasFiscais(json, ente, exercicio) {
+  let modelo = null;
+  let a1 = [];
+  for (const m of MODELOS_RGF) {
+    a1 = await itensOuVazio(json, urlRgf(ente, exercicio, m, 'RGF-Anexo 01'));
+    if (a1.length) { modelo = m; break; }
+  }
+  let divida = null;
+  if (modelo) divida = escolherDivida(await itensOuVazio(json, urlRgf(ente, exercicio, modelo, 'RGF-Anexo 02')), modelo.id);
+  return { rgf: modelo ? modelo.id : null, pessoal: a1.length ? escolherPessoal(a1) : null, divida };
+}
+
 /** Busca os três dados de uma prefeitura ou estado. Nunca lança erro: devolve { erro } se falhar. */
 export async function contasDoEnte(json, ente, exercicio) {
   try {
-    let modelo = null;
-    let a1 = [];
-    for (const m of MODELOS_RGF) {
-      a1 = await itensOuVazio(json, urlRgf(ente, exercicio, m, 'RGF-Anexo 01'));
-      if (a1.length) { modelo = m; break; }
-    }
-    let divida = null;
-    if (modelo) divida = escolherDivida(await itensOuVazio(json, urlRgf(ente, exercicio, modelo, 'RGF-Anexo 02')), modelo.id);
-    const periodoRgf = modelo ? modelo.id : null;
+    const fiscais = await contasFiscais(json, ente, exercicio);
     const extrato = await itensOuVazio(json, `${BASE}/extrato_entregas?id_ente=${ente.cod_ibge}&an_referencia=${exercicio}`);
-    return {
-      rgf: periodoRgf,
-      pessoal: a1.length ? escolherPessoal(a1) : null,
-      divida,
-      entregas: contarEntregas(extrato)
-    };
+    return { ...fiscais, entregas: contarEntregas(extrato) };
   } catch (e) {
     return { erro: String(e.message || e).slice(0, 160) };
   }

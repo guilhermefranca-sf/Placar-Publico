@@ -8,9 +8,11 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { atualizar, exercicioDoTesouro, registrarCorrecoes } from '../atualizar.mjs';
+import { gerarFederais } from '../federais.mjs';
 import { UFS } from '../tse.mjs';
 import { scorePessoal, scoreDivida } from '../nota.mjs';
 import { indexarEntes, acharMunicipioParecido, distancia } from '../siconfi.mjs';
+import { coletarSeries, precisaBuscar, extrairDca } from '../series-fiscais.mjs';
 
 process.env.PLACAR_ESPERA_MS = '0'; // no teste, a segunda tentativa das consultas que falharam não precisa esperar
 
@@ -126,9 +128,27 @@ function fazerZip(nome, arquivos) {
   assert.equal(r.status, 0, 'não consegui criar o zip de teste');
   return zip;
 }
+const CAB_TSE2 = [...CAB_TSE, 'DT_ELEICAO', 'DS_ELEICAO', 'NR_CPF_CANDIDATO'];
+const CPF_DE_TESTE = '12345678909';
+function csvMunicipal2020(uf) {
+  const linhas = [];
+  NOMES_MUN.forEach((m, k) => {
+    const cod = String(1000 + k).padStart(5, '0');
+    // k = 0: o mesmo prefeito de 2024 (reeleito). Nos outros, outro nome: houve troca de gestor.
+    const nome = k === 0 ? `PREFEITO ${uf}0` : `PREFEITO ANTIGO ${uf}${k}`;
+    linhas.push([2020, 1, uf, cod, m, 'PREFEITO', 210000000 + (++seq), nome, nome.split(' ')[0], 'ABC', '07/12/1972', 'ENSINO MÉDIO COMPLETO', 'EMPRESÁRIA/EMPRESÁRIO', 'ELEITO', '15/11/2020', 'Eleições Municipais 2020', CPF_DE_TESTE]);
+  });
+  return csv(CAB_TSE2, linhas);
+}
+function csvGeralComData(uf, ano, nome, data, desc) {
+  return csv(CAB_TSE2, [[ano, 1, uf, uf, uf, 'GOVERNADOR', 220000000 + (++seq), nome, nome, 'XYZ', '01/02/1960', 'SUPERIOR COMPLETO', 'ADVOGADO', 'ELEITO', data, desc, CPF_DE_TESTE]]);
+}
+const csvPres = (ano, nome, data) => csv(CAB_TSE2, [[ano, 1, 'BR', 'BR', 'BRASIL', 'PRESIDENTE', 250000000 + (++seq), nome, nome, 'PPP', '01/01/1950', 'SUPERIOR COMPLETO', 'ADVOGADO', 'ELEITO', data, `Eleições Gerais ${ano}`, CPF_DE_TESTE]]);
 const zip2024 = fazerZip('consulta_cand_2024.zip', Object.fromEntries(UFS.filter((u) => u !== 'DF').map((u) => [`consulta_cand_2024_${u}.csv`, csvMunicipal(u)])));
-const zip2022 = fazerZip('consulta_cand_2022.zip', Object.fromEntries(UFS.map((u) => [`consulta_cand_2022_${u}.csv`, csvGeral(u)])));
-const zip2026 = fazerZip('consulta_cand_2026.zip', Object.fromEntries(UFS.map((u) => [`consulta_cand_2026_${u}.csv`, csvGeral(u).replace(/GOVERNADOR /g, 'GOVERNADOR NOVO ')])));
+const zip2022 = fazerZip('consulta_cand_2022.zip', { ...Object.fromEntries(UFS.map((u) => [`consulta_cand_2022_${u}.csv`, csvGeral(u)])), 'consulta_cand_2022_BRASIL.csv': csvPres(2022, 'PRESIDENTE DE 2022', '02/10/2022') });
+const zip2026 = fazerZip('consulta_cand_2026.zip', { ...Object.fromEntries(UFS.map((u) => [`consulta_cand_2026_${u}.csv`, csvGeral(u).replace(/GOVERNADOR /g, 'GOVERNADOR NOVO ')])), 'consulta_cand_2026_BR.csv': csvPres(2026, 'PRESIDENTE DE 2026', '25/10/2026') });
+const zip2020 = fazerZip('consulta_cand_2020.zip', Object.fromEntries(UFS.filter((u) => u !== 'DF').map((u) => [`consulta_cand_2020_${u}.csv`, csvMunicipal2020(u)])));
+const zip2018 = fazerZip('consulta_cand_2018.zip', { ...Object.fromEntries(UFS.map((u) => [`consulta_cand_2018_${u}.csv`, csvGeralComData(u, 2018, `GOVERNADOR ANTIGO ${u}`, '28/10/2018', 'Eleições Gerais 2018')])), 'consulta_cand_2018_BRASIL.csv': csvPres(2018, 'PRESIDENTE DE 2018', '28/10/2018') });
 
 /* ---------- Tesouro de mentira ---------- */
 const entes = [];
@@ -205,6 +225,63 @@ function respostaSiconfi(url) {
   throw new Error('HTTP 404 em ' + url);
 }
 
+
+/* ---------- DCA (balanço anual), IBGE e Banco Central de mentira ---------- */
+const chamadasDca = { n: 0, porAno: {} };
+const dcaFalhou = new Set();
+const SHARES = { '10': 0.25, '12': 0.2, '17': 0.05, '06': 0.02, '15': 0.1, '16': 0.01, '26': 0.07 };
+const MULT = { 'Despesas Empenhadas': 1.0, 'Despesas Liquidadas': 0.9, 'Despesas Pagas': 0.8 };
+const baseDca = (id, ano) => 1000000 * (1 + (id % 7)) * (ano - 2020);
+const popDca = (id, ano) => (entes.find((e) => e.cod_ibge === id)?.populacao || 1) + (ano - 2020) * 10;
+function respostaDca(url) {
+  const p = new URL(url).searchParams;
+  const id = Number(p.get('id_ente'));
+  const ano = Number(p.get('an_exercicio'));
+  chamadasDca.n++; chamadasDca.porAno[ano] = (chamadasDca.porAno[ano] || 0) + 1;
+  if (p.get('no_anexo') !== 'DCA-Anexo I-E') return { items: [] };
+  if (id % 17 === 0 && !dcaFalhou.has(`${id}|${ano}`)) { dcaFalhou.add(`${id}|${ano}`); throw new Error('HTTP 503 em ' + url); }
+  if (id % 11 === 0) return { items: [] }; // este ente não entregou o balanço
+  const pop = popDca(id, ano);
+  const base = baseDca(id, ano);
+  const linha = (conta, coluna, valor) => ({ anexo: 'DCA-Anexo I-E', cod_conta: 'TotalDespesas', cod_ibge: id, coluna, conta, exercicio: ano, instituicao: 'X', populacao: pop, rotulo: 'Total Geral da Despesa por Função', valor });
+  const itens = [];
+  for (const [col, m] of Object.entries(MULT)) {
+    itens.push(linha('Despesas Exceto Intraorçamentárias', col, base * m));
+    for (const [f, share] of Object.entries(SHARES)) {
+      itens.push(linha(`${f} - Função ${f}`, col, base * share * m));
+      itens.push(linha(`${f}.301 - Subfunção`, col, base * share * m * 0.5)); // subfunção: não pode ser somada de novo
+      itens.push(linha(`FU${f} - Demais Subfunções`, col, 1));
+    }
+  }
+  itens.push(linha('10 - Função 10', 'Inscrição de Restos a Pagar Não Processados', 12345)); // coluna que não usamos
+  return { items: itens };
+}
+const mesesDe = (de, ate) => { const m = []; let [a, b] = de.split('-').map(Number); const [fa, fb] = ate.split('-').map(Number); while (a < fa || (a === fa && b <= fb)) { m.push(`${a}-${String(b).padStart(2, '0')}`); b++; if (b > 12) { a++; b = 1; } } return m; };
+const ibgeDe = (e, periodo, extra = 0) => e.populacao + Number(periodo) + extra;
+function respostaIbge(url) {
+  const u = new URL(url);
+  const m = /agregados\/(\d+)\/periodos(?:\/([^/]+)\/variaveis\/(\d+))?$/.exec(u.pathname);
+  if (!m) throw new Error('HTTP 404 em ' + url);
+  const [, tabela, periodo, variavel] = m;
+  if (!periodo) return { 6579: [{ id: '2023' }, { id: '2024' }, { id: '2025' }], 5938: [{ id: '2022' }, { id: '2023' }] }[tabela].map((x) => ({ ...x, literals: [x.id] }));
+  const loc = u.searchParams.get('localidades');
+  if (loc === 'N1[all]') {
+    const [de, ate] = periodo.split('-').map((x) => `${x.slice(0, 4)}-${x.slice(4)}`);
+    const meses = mesesDe(de, ate).filter((x) => !(tabela === '6381' && x > '2026-09')); // PNAD tem atraso: falta o último mês
+    return [{ id: variavel, variavel: 'x', unidade: '%', resultados: [{ classificacoes: [], series: [{ localidade: { id: '1' }, serie: Object.fromEntries(meses.map((x, k) => [x.replace('-', ''), String(variavel === '2265' ? 5 + (k % 3) : variavel === '4099' ? 8 - k * 0.05 : 0.5)])) }] }] }];
+  }
+  const nivel = loc.slice(0, 2);
+  const lista = entes.filter((e) => (nivel === 'N6' ? e.esfera === 'M' : e.esfera === 'E' || e.esfera === 'D') && e.cod_ibge !== 1);
+  const valor = (e) => (tabela === '6579' ? ibgeDe(e, periodo) : tabela === '5938' ? e.populacao * 1000 + Number(periodo) : 50 + (e.cod_ibge % 40) + 0.5);
+  return [{ id: variavel, variavel: 'x', unidade: 'x', resultados: [{ classificacoes: [], series: lista.map((e) => ({ localidade: { id: String(e.cod_ibge) }, serie: { [periodo]: e.cod_ibge % 97 === 0 ? '-' : String(valor(e)) } })) }] }];
+}
+function respostaBcb(url) {
+  const n = /bcdata\.sgs\.(\d+)\/dados/.exec(url)[1];
+  const q = new URL(url).searchParams;
+  const dd = (t) => t.split('/').reverse().join('-').slice(0, 7);
+  return mesesDe(dd(q.get('dataInicial')), dd(q.get('dataFinal'))).map((x, k) => ({ data: `01/${x.slice(5)}/${x.slice(0, 4)}`, valor: String((n === '13762' ? 70 : 10) + k / 10) }));
+}
+
 const API = 'https://dadosabertos.camara.leg.br/api/v2';
 const ARQ = 'https://dadosabertos.camara.leg.br/arquivos';
 const arquivosTexto = {
@@ -215,6 +292,13 @@ const arquivosTexto = {
   [`${ARQ}/proposicoes/csv/proposicoes-2026.csv`]: proposicoes,
   [`${ARQ}/proposicoesAutores/csv/proposicoesAutores-2026.csv`]: autores
 };
+// Anos anteriores: mesmo desenho, com o ano trocado. Os deputados 500, 501 e 502 (que assumiram tarde ou nunca
+// apareceram) não existiam nesses anos. Os ids de sessão e de votação se repetem de propósito: cada ano é lido separado.
+const doAno = (texto, a) => texto.replaceAll('2026', String(a)).split('\r\n').filter((l) => !/"10050[0-2]"/.test(l)).join('\r\n');
+const lidos = [];
+for (const a of [2023, 2024, 2025]) {
+  for (const [url, texto] of Object.entries({ ...arquivosTexto })) arquivosTexto[url.replace('2026', a)] = doAno(texto, a);
+}
 // Histórico no mesmo formato da API real: eventos de posse, licença, retorno e fim.
 const historicoDe = (id) => {
   const i = id - 100000;
@@ -236,20 +320,28 @@ const fontes = {
       const pagina = Number(new URL(url).searchParams.get('pagina') || 1);
       return { dados: Array.from({ length: N_DEP }, (_, i) => dep(i)).slice((pagina - 1) * 100, pagina * 100) };
     }
+    if (url.includes('apidatalake') && url.includes('/dca?')) return respostaDca(url);
     if (url.includes('apidatalake')) return respostaSiconfi(url);
+    if (url.includes('servicodados.ibge.gov.br')) return respostaIbge(url);
+    if (url.includes('api.bcb.gov.br')) return respostaBcb(url);
     throw new Error('HTTP 404 em ' + url);
   },
-  texto: async (url) => { if (!(url in arquivosTexto)) throw new Error('HTTP 404 em ' + url); return arquivosTexto[url]; },
-  cotas: async () => cotas
+  texto: async (url) => { if (!(url in arquivosTexto)) throw new Error('HTTP 404 em ' + url); lidos.push(url); return arquivosTexto[url]; },
+  cotas: async (a) => (a === 2026 ? cotas : doAno(cotas, a).replace(/"2025";"1";"999999"/, '"2025";"1";"0"'))
 };
-const baixarZip = async (url) => (url.includes('_2024') ? zip2024 : url.includes('_2026') ? zip2026 : zip2022);
+const zipsPorAno = { 2018: zip2018, 2020: zip2020, 2022: zip2022, 2024: zip2024, 2026: zip2026 };
+const baixarZip = async (url) => { const z = zipsPorAno[/consulta_cand_(\d{4})\.zip/.exec(url)[1]]; if (!z) throw new Error('HTTP 404 em ' + url); return z; };
 const lerSaida = (n) => JSON.parse(readFileSync(path.join(saida, n), 'utf-8'));
 const logs = [];
 const log = (m) => { logs.push(m); if (process.env.VERBOSO) console.log("  [log]", m); };
 
 /* ---------- 1ª rodada: tudo ---------- */
 console.log('Rodando a atualização completa com dados de mentira...');
-const meta1 = await atualizar({ fontes, baixarZip, saida, hoje, log });
+const TROCAS_TESTE = [
+  { id: 't-sp', cargo: 'governador', uf: 'SP', saiu: { nome: 'Governador Sp' }, entrou: { nome: 'Vice Sp', partido: 'XYZ', vinculo: 'vice-governador' }, tipo: 'renúncia', data: null, dataAprox: '2026-04-04', fontes: [], divergencias: [] },
+  { id: 't-mun', cargo: 'prefeito', uf: 'SP', municipio: 'Biritiba-Mirim', saiu: null, entrou: { nome: 'Vice Biritiba', partido: 'ABC', vinculo: 'vice-prefeito' }, tipo: 'renúncia', data: '2026-04-02', dataAprox: null, fontes: [], divergencias: [] }
+];
+const meta1 = await atualizar({ fontes, baixarZip, saida, hoje, log, trocas: TROCAS_TESTE });
 
 await caso('todas as fontes terminam bem', () => {
   assert.equal(meta1.fontes.camara.ok, true);
@@ -262,8 +354,10 @@ await caso('todas as fontes terminam bem', () => {
 await caso('federais: 513 deputados, posições 1..N sem buracos, notas de 0 a 100', () => {
   const f = lerSaida('federais.json');
   assert.equal(f.total, 513);
-  assert.equal(f.sessoes, SESSOES, 'conta só sessão deliberativa de Plenário encerrada');
-  assert.equal(f.votacoes, VOT_PLEN, 'conta só votação nominal do Plenário (ignora comissão e simbólica)');
+  assert.deepEqual(f.janela, { anos: 4, de: 2023, ate: 2026 }, 'o índice olha os últimos 4 anos civis');
+  assert.equal(f.sessoes, 4 * SESSOES, 'conta só sessão deliberativa de Plenário encerrada, nos 4 anos');
+  assert.equal(f.votacoes, 4 * VOT_PLEN, 'conta só votação nominal do Plenário (ignora comissão e simbólica), nos 4 anos');
+  assert.equal(f.sessoesAno, SESSOES); assert.equal(f.votacoesAno, VOT_PLEN);
   const com = f.itens.filter((i) => i.nota != null);
   assert.equal(f.comNota, com.length);
   assert.deepEqual(com.map((i) => i.rank).sort((a, b) => a - b), com.map((_, k) => k + 1));
@@ -275,33 +369,64 @@ await caso('federais: casos especiais (assumiu tarde, primeira presença tardia,
   const f = lerSaida('federais.json');
   const por = (i) => f.itens.find((x) => x.id === String(100000 + i));
   assert.equal(por(500).nota, null); assert.match(por(500).motivo, /15 sessões/);
-  assert.ok(por(501).nota != null && por(501).obs && /Primeira presença/.test(por(501).obs));
+  assert.ok(por(501).nota != null && por(501).obs && /Primeira presença registrada em/.test(por(501).obs));
+  assert.equal(por(501).desde.slice(0, 4), '2026', 'quem só aparece em 2026 é avaliado a partir daí, não pelos anos em que nem era deputado');
+  assert.equal(por(501).extra.sessoes[1], SESSOES - 12);
   assert.equal(por(502).nota, null); assert.match(por(502).motivo, /Sem presença/);
 });
 
-await caso('federais: presença e votos batem com a conta feita à mão', () => {
+const ANOS = [2023, 2024, 2025, 2026];
+const dSessao = (s, a) => dataSessao(s).replace('2026', String(a));
+const dVot = (v, a) => dataVot(v).replace('2026', String(a));
+
+await caso('federais: presença, votos e cota nos 4 anos batem com a conta feita à mão', () => {
   const f = lerSaida('federais.json');
   const i = 40;
   const d = f.itens.find((x) => x.id === String(100000 + i));
   let feitas = 0; for (let s = 0; s < SESSOES; s++) if (presente(i, s)) feitas++;
   const primeira = [...Array(SESSOES).keys()].find((s) => presente(i, s));
-  const total = SESSOES - primeira;
-  assert.equal(d.comp[0].s, Math.round(feitas / total * 1000) / 10);
-  const desdeVot = [...Array(VOT_PLEN).keys()].filter((v) => dataVot(v) >= dataSessao(primeira));
-  const votei = desdeVot.filter((v) => ((i * 13 + v * 7) % 100) < perfil(i).vot).length;
-  assert.equal(d.comp[1].s, Math.round(votei / desdeVot.length * 1000) / 10);
-  assert.equal(d.extra.gasto, Math.round(10 * (perfil(i).gasto + 100 - 100)) );
+  assert.equal(d.desde, dSessao(primeira, 2023), 'a contagem começa na primeira presença da janela (2023)');
+  const total = 4 * SESSOES - primeira;
+  assert.equal(d.extra.sessoes[0], 4 * feitas); assert.equal(d.extra.sessoes[1], total);
+  assert.equal(d.comp[0].s, Math.round(4 * feitas / total * 1000) / 10);
+  const doVoto = (v) => ((i * 13 + v * 7) % 100) < perfil(i).vot;
+  const desdeVot = [...Array(VOT_PLEN).keys()].filter((v) => dVot(v, 2023) >= dSessao(primeira, 2023));
+  const votei = desdeVot.filter(doVoto).length + 3 * [...Array(VOT_PLEN).keys()].filter(doVoto).length;
+  assert.equal(d.extra.votos[0], votei); assert.equal(d.extra.votos[1], desdeVot.length + 3 * VOT_PLEN);
+  assert.equal(d.comp[1].s, Math.round(votei / (desdeVot.length + 3 * VOT_PLEN) * 1000) / 10);
+  assert.equal(d.extra.gasto, 4 * 10 * perfil(i).gasto, 'soma da cota dos 4 anos');
+  assert.match(d.comp[0].f, /desde \d\d\/\d\d\/2023/);
 });
 
 await caso('federais: requerimento não conta como projeto; cota usa valor menos glosa e ignora outro ano', () => {
   const f = lerSaida('federais.json');
   const c = COAUTOR - 100000;
   const dc = f.itens.find((x) => x.id === String(COAUTOR));
-  const dataPL = (k) => `2026-0${1 + (k % 9)}-10`;
-  const meus = Array.from({ length: perfil(c).proj }, (_, k) => dataPL(k)).filter((d) => d >= dc.desde).length;
-  const dataDoPLcoautoria = String(propRows.find((r) => r[0] === primeiroPL[0])[2]).slice(0, 10);
-  assert.equal(dc.extra.projetos, meus + (dataDoPLcoautoria >= dc.desde ? 1 : 0), 'conta os projetos próprios (a partir da primeira presença) mais o PL em coautoria, uma vez só');
-  assert.equal(dc.extra.gasto, 10 * perfil(c).gasto, 'o gasto de 2025 não entra');
+  const dataPL = (k, a) => `${a}-0${1 + (k % 9)}-10`;
+  const dataDoPLcoautoria = (a) => String(propRows.find((r) => r[0] === primeiroPL[0])[2]).slice(0, 10).replace('2026', String(a));
+  let esperado = 0;
+  for (const a of ANOS) {
+    esperado += Array.from({ length: perfil(c).proj }, (_, k) => dataPL(k, a)).filter((d) => d >= dc.desde).length;
+    esperado += dataDoPLcoautoria(a) >= dc.desde ? 1 : 0;
+  }
+  assert.equal(dc.extra.projetos, esperado, 'conta os projetos próprios (a partir da primeira presença) mais o PL em coautoria, uma vez só por ano');
+  assert.equal(dc.extra.gasto, 4 * 10 * perfil(c).gasto, 'o gasto lançado em outro ano não entra');
+});
+
+await caso('federais: licença e afastamento não contam contra o deputado (histórico oficial da Câmara)', () => {
+  const f = lerSaida('federais.json');
+  const i = 7;
+  const d = f.itens.find((x) => x.id === String(100000 + i));
+  const primeira = [...Array(SESSOES).keys()].find((s) => presente(i, s));
+  // licença de 01/08/2023 até 01/12/2023: as sessões em que ele não compareceu nesse período saem da conta
+  const fora = [...Array(SESSOES).keys()].filter((s) => dSessao(s, 2023) >= '2023-08-01' && dSessao(s, 2023) < '2023-12-01' && !presente(i, s)).length;
+  assert.ok(fora > 0, 'o teste precisa ter faltas durante a licença');
+  assert.equal(d.extra.licenca.sessoes, fora);
+  assert.equal(d.extra.licenca.dias, 122);
+  assert.equal(d.extra.sessoes[1], 4 * SESSOES - primeira - fora);
+  assert.match(d.comp[0].f, /licenciado/);
+  const outro = f.itens.find((x) => x.id === String(100000 + 40));
+  assert.ok(!outro.extra.licenca, 'quem não se licenciou não tem a marca de licença');
 });
 
 await caso('TSE: só eleitos; 2º turno conta uma vez; DF sem municipais; estaduais e distritais', () => {
@@ -499,14 +624,234 @@ await caso('correções: mudança de resultado, placar, texto ou voto de um depu
 
 if (process.env.COPIAR_DADOS) { cpSync(saida, process.env.COPIAR_DADOS, { recursive: true }); console.log('dados copiados para', process.env.COPIAR_DADOS); }
 
+
+/* ---------- Gestões, séries por ano, IBGE e presidente ---------- */
+const exec = (cod) => lerSaida(`executivos/${cod}.json`);
+const escolherMun = (k) => { for (const uf of UFS.filter((u) => u !== 'DF')) { const id = codPorMun[`${uf}${k}`]; if (id % 11 !== 0) return { uf, id }; } };
+
+await caso('perfil ampliado: as novas etapas terminam bem e gravam os arquivos', () => {
+  for (const f of ['administracoes', 'ibge', 'presidente', 'series']) assert.equal(meta1.fontes[f].ok, true, f);
+  assert.equal(meta1.fontes.administracoes.municipios, 130);
+  assert.equal(meta1.fontes.administracoes.governadores, 27);
+  assert.equal(meta1.fontes.administracoes.presidente, true);
+  for (const f of ['administracoes-SP.json', 'administracoes-BR.json', 'indicadores.json', 'ibge-contexto.json', 'executivos/presidente.json', 'executivos/35.json']) assert.ok(existsSync(path.join(saida, f)), f);
+  for (const a of [2022, 2023, 2024, 2025]) assert.ok(existsSync(path.join(saida, 'anos', `siconfi-${a}.json`)), `cache do Tesouro de ${a}`);
+  assert.ok(!existsSync(path.join(saida, 'anos', 'siconfi-2026.json')), 'o ano em curso não é coletado');
+});
+
+await caso('CPF dos arquivos do TSE não aparece em nenhum arquivo publicado', () => {
+  const todos = [];
+  const andar = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) andar(f); else todos.push(f); } };
+  andar(saida);
+  const achou = todos.filter((f) => readFileSync(f, 'utf-8').includes(CPF_DE_TESTE));
+  assert.deepEqual(achou, []);
+});
+
+await caso('prefeito: troca de gestor em 2024/2025 separa os anos por gestão', () => {
+  const { id } = escolherMun(1);
+  const d = exec(id);
+  assert.deepEqual(d.gestoes.map((g) => g.nome), ['Prefeito Antigo Sp1', 'Prefeito Sp1'].map((n, i) => (d.gestoes[i].nome.startsWith('Prefeito Antigo') ? 'Prefeito Antigo ' + d.gestoes[i].nome.slice(-3) : 'Prefeito ' + d.gestoes[i].nome.slice(-3))));
+  assert.deepEqual(d.gestoes.map((g) => [g.inicio, g.fim, g.situacao]), [['2021-01-01', '2024-12-31', 'encerrada'], ['2025-01-01', '2028-12-31', 'em exercício']]);
+  assert.deepEqual(Object.keys(d.anos), ['2022', '2023', '2024', '2025', '2026']);
+  for (const a of [2022, 2023, 2024]) assert.deepEqual([d.anos[a].atribuicao.tipo, d.anos[a].atribuicao.gestoes[0]], ['unica', 'g1'], String(a));
+  assert.deepEqual([d.anos[2025].atribuicao.tipo, d.anos[2025].atribuicao.gestoes[0]], ['unica', 'g2']);
+  assert.equal(d.anos[2022].mesesNaJanela, 2, 'de 2022 só novembro e dezembro estão no recorte de 48 meses');
+  assert.equal(d.anos[2023].mesesNaJanela, 12);
+  assert.equal(d.anos[2026].mesesNaJanela, 10);
+  assert.equal(d.anos[2026].situacao, 'em-curso');
+  assert.equal(d.janela.de, '2022-11-01');
+  assert.match(d.aviso, /Trocas que não estejam/);
+});
+
+await caso('prefeito reeleito é uma gestão só (não é troca de gestor)', () => {
+  const { id } = escolherMun(0);
+  const d = exec(id);
+  assert.equal(d.gestoes.length, 1);
+  assert.deepEqual([d.gestoes[0].reeleito, d.gestoes[0].mandatos.length], [true, 2]);
+  assert.ok([2022, 2023, 2024, 2025].every((a) => d.anos[a].atribuicao.gestoes[0] === 'g1'));
+});
+
+await caso('prefeito com troca no meio de 2026 (curadoria): 2026 fica dividido e o titular do TSE continua listado', () => {
+  const id = codPorMun.SP2;
+  if (id % 11 === 0) return;
+  const d = exec(id);
+  assert.equal(d.gestoes.length, 3);
+  assert.deepEqual([d.gestoes[1].fim, d.gestoes[1].encerradaPor, d.gestoes[2].inicio, d.gestoes[2].origem], ['2026-04-01', 'renúncia', '2026-04-02', 'curadoria']);
+  assert.equal(d.anos[2026].atribuicao.tipo, 'dividida');
+  assert.equal(d.anos[2025].atribuicao.tipo, 'unica');
+});
+
+await caso('despesa por função: valores do Tesouro, só nível de função, empenhada ≠ paga, e calculados conferem', () => {
+  const { id } = escolherMun(1);
+  const a = exec(id).anos[2024];
+  const base = baseDca(id, 2024);
+  assert.equal(a.situacao, 'fechado');
+  assert.deepEqual(Object.keys(a.f).sort(), Object.keys(SHARES).sort(), 'só as 7 funções do teste (subfunção e "FU.." ficam de fora)');
+  assert.deepEqual(a.f['10'], [Math.round(base * 0.25 * 1.0), Math.round(base * 0.25 * 0.9), Math.round(base * 0.25 * 0.8)]);
+  assert.deepEqual(a.total, [Math.round(base), Math.round(base * 0.9), Math.round(base * 0.8)]);
+  assert.equal(a.pop, popDca(id, 2024));
+  assert.deepEqual(a.d['10'], [Math.round(a.f['10'][2] / a.pop), 25]);
+  assert.deepEqual(a.d.total, [Math.round(a.total[2] / a.pop), 100]);
+  assert.equal(a.pessoal, pessoalDe(id));
+  assert.equal(a.divida, dividaDe(id));
+  assert.equal(exec(id).anos[2025].pessoal, pessoalDe(id), '2025 vem das contas que a rotina semanal já buscou');
+});
+
+await caso('ente sem balanço no Tesouro: "sem balanço", sem número inventado (nunca zero)', () => {
+  const sem = [...entes.filter((e) => e.esfera === 'M' && e.cod_ibge % 11 === 0 && e.cod_ibge < 9000000)][0];
+  const uf = sem.uf;
+  const prefs = lerSaida(`prefeitos-${uf}.json`).itens.find((p) => p.ibge === sem.cod_ibge);
+  assert.ok(prefs, 'município de teste achado');
+  const a = exec(sem.cod_ibge).anos[2024];
+  assert.equal(a.situacao, 'sem-balanco');
+  assert.ok(!('f' in a) && !('total' in a) && !('d' in a));
+});
+
+await caso('IBGE: população, PIB e Censo 2022 entram no contexto; valor "-" do IBGE fica de fora', () => {
+  const { id } = escolherMun(1);
+  const c = exec(id).contexto;
+  const e = entes.find((x) => x.cod_ibge === id);
+  assert.deepEqual(c.populacao, { ano: 2025, valor: e.populacao + 2025 });
+  assert.equal(c.pib.ano, 2023);
+  assert.equal(c.pib.valor, e.populacao * 1000 + 2023);
+  assert.equal(c.pib.porHabitante, Math.round((c.pib.valor * 1000) / (e.populacao + 2023)));
+  assert.equal(c.censo.ano, 2022);
+  assert.equal(c.censo.referencia, '2022-08-01');
+  assert.equal(c.censo.agua, 50 + (id % 40) + 0.5);
+  const semIbge = entes.find((x) => x.esfera === 'M' && x.cod_ibge % 97 === 0 && x.cod_ibge < 9000000 && x.cod_ibge % 11 !== 0);
+  if (semIbge && existsSync(path.join(saida, `executivos/${semIbge.cod_ibge}.json`))) assert.ok(!('populacao' in exec(semIbge.cod_ibge).contexto));
+});
+
+await caso('governador: gestão de 2018, 2022, renúncia de 2026 (curadoria) e eleito de 2026 como futura', () => {
+  const d = exec(35);
+  assert.deepEqual(d.gestoes.map((g) => [g.nome, g.situacao]), [['Governador Antigo Sp', 'encerrada'], ['Governador Sp', 'encerrada'], ['Vice Sp', 'em exercício'], ['Governador Novo Sp', 'futura']]);
+  assert.deepEqual(d.gestoes.map((g) => g.inicio), ['2019-01-01', '2023-01-01', '2026-04-04', '2027-01-01']);
+  assert.equal(d.anos[2022].atribuicao.gestoes[0], 'g1', '2022 foi do governador eleito em 2018');
+  assert.equal(d.anos[2025].atribuicao.gestoes[0], 'g2');
+  assert.equal(d.anos[2026].atribuicao.tipo, 'dividida');
+  assert.deepEqual(d.gestoes[2].divergencias, []);
+  assert.equal(d.ente.esfera, 'E');
+  assert.equal(exec(53).ente.esfera, 'D');
+});
+
+await caso('presidente: séries mensais por gestão (Nov-Dez/2022 são da gestão anterior)', () => {
+  const d = exec('presidente');
+  assert.deepEqual(d.gestoes.map((g) => [g.nome, g.inicio, g.situacao]), [['Presidente de 2018', '2019-01-01', 'encerrada'], ['Presidente de 2022', '2023-01-01', 'em exercício'], ['Presidente de 2026', '2027-01-01', 'futura']]);
+  const ipca = d.indicadores['pres.ipca'];
+  assert.equal(ipca.serie.length, 48);
+  assert.equal(ipca.serie[0].p, '2022-11');
+  assert.equal(ipca.serie[0].atribuicao.gestoes[0], 'g1');
+  assert.equal(ipca.serie[2].p, '2023-01');
+  assert.equal(ipca.serie[2].atribuicao.gestoes[0], 'g2');
+  assert.equal(ipca.porGestao.g1.meses, 2);
+  assert.equal(ipca.porGestao.g2.meses, 46);
+  assert.equal(ipca.porGestao.g2.acumulado, Math.round((1.005 ** 46 - 1) * 10000) / 100);
+  assert.ok(!ipca.porGestao.g3, 'gestão que ainda não começou não recebe número');
+  const des = d.indicadores['pres.desocupacao'];
+  assert.equal(des.ultimoMes, '2026-09', 'PNAD tem atraso: o último mês não é inventado');
+  assert.equal(des.porGestao.g2.meses, 45);
+  assert.equal(d.indicadores['pres.pib'], undefined, 'indicador pendente não vira série');
+});
+
+await caso('catálogo: cada indicador tem fonte, órgão, link e limitações; os não validados são "pendente" com a mensagem padrão', () => {
+  const c = lerSaida('indicadores.json');
+  assert.equal(c.msgNaoConfirmado, 'Dado não encontrado ou não confirmado');
+  assert.ok(c.indicadores.length > 40);
+  for (const i of c.indicadores) {
+    assert.ok(i.fonte && i.orgao && i.url && i.limitacoes, `${i.id} sem fonte, órgão, link ou limitações`);
+    assert.ok(['oficial', 'calculado', 'pendente'].includes(i.tipo), i.id);
+    if (i.tipo === 'calculado') assert.ok(i.metodo, `${i.id} calculado sem método`);
+    if (i.tipo === 'oficial' && i.id.startsWith('sanea.censo')) assert.equal(i.referencia, '2022-08-01');
+  }
+  assert.ok(c.indicadores.some((i) => i.tipo === 'pendente' && i.id === 'obras.federais'));
+  const secoes = new Set(c.secoes.map((x) => x.id));
+  assert.deepEqual(c.indicadores.filter((i) => !secoes.has(i.secao)).map((i) => i.id), [], 'toda aba usada pelo catálogo existe');
+  assert.equal(new Set(c.indicadores.map((i) => i.id)).size, c.indicadores.length, 'sem indicador repetido');
+  for (const sec of ['saneamento', 'saude', 'educacao', 'seguranca', 'infraestrutura', 'servicos']) assert.ok(c.indicadores.some((i) => i.secao === sec && i.tipo === 'oficial'), `a aba ${sec} tem ao menos um indicador oficial`);
+  assert.ok(c.secoes.map((x) => x.titulo).join('|').startsWith('Visão geral|Serviços básicos|Saneamento|Saúde|Educação|Segurança|Infraestrutura|Obras|Economia|Orçamento|Transparência|Fontes'));
+});
+
+await caso('coleta com orçamento de tempo: para quando acaba, começa pelas maiores cidades e continua de onde parou', async () => {
+  const guardado = {};
+  const cache = { ler: (a) => guardado[a] || null, gravar: (a, o) => { guardado[a] = JSON.parse(JSON.stringify(o)); } };
+  let t = 0;
+  const json = async (url) => { t += 1000; return url.includes('/dca?') ? { items: [{ coluna: 'Despesas Pagas', conta: 'Despesas Exceto Intraorçamentárias', valor: 10, populacao: 5 }] } : { items: [] }; };
+  const pequenas = [{ cod_ibge: 1, esfera: 'M', populacao: 10 }, { cod_ibge: 2, esfera: 'M', populacao: 900 }, { cod_ibge: 3, esfera: 'M', populacao: 50 }];
+  const base = { json, entes: pequenas, anos: [2025], cache, hoje: new Date('2026-11-18T12:00:00Z'), paralelo: 1, relogio: () => t };
+  const r1 = await coletarSeries({ ...base, orcamentoMs: 2500 });
+  assert.equal(r1.parouPorTempo, true);
+  assert.deepEqual(Object.keys(guardado[2025].itens), ['2'], 'a maior cidade vem primeiro e o progresso é gravado');
+  const r2 = await coletarSeries({ ...base, orcamentoMs: 1e9 });
+  assert.equal(r2.parouPorTempo, false);
+  assert.deepEqual(Object.keys(guardado[2025].itens).sort(), ['1', '2', '3']);
+  assert.equal(r2.feitos, 2, 'não refez a que já estava pronta');
+  assert.equal(r2.pendentes[2025], 0, 'sem relatório fiscal (RGF), mas visto hoje: só volta a ser revisto depois de 7 dias');
+  const r3 = await coletarSeries({ ...base, hoje: new Date('2026-11-26T12:00:00Z'), orcamentoMs: 1e9 });
+  assert.equal(r3.feitos, 3, 'uma semana depois, a entrega atrasada de um ano recente é procurada de novo');
+});
+
+await caso('quando buscar de novo: erro sempre, ano recente incompleto só depois de 7 dias, ano antigo sem balanço nunca', () => {
+  const h = new Date('2026-11-18T12:00:00Z');
+  const ok = { em: '2026-11-17', dca: 1, rgfOk: 1 };
+  assert.equal(precisaBuscar(undefined, 2025, h), true);
+  assert.equal(precisaBuscar({ erro: 'x', em: '2026-11-17' }, 2022, h), true);
+  assert.equal(precisaBuscar(ok, 2025, h), false);
+  assert.equal(precisaBuscar({ ...ok, dca: 0 }, 2025, h), false, 'viu ontem: espera');
+  assert.equal(precisaBuscar({ ...ok, dca: 0, em: '2026-11-01' }, 2025, h), true, 'entrega atrasada pode ter chegado');
+  assert.equal(precisaBuscar({ ...ok, dca: 0, em: '2026-01-01' }, 2022, h), false, 'ano antigo sem balanço não passa a ter');
+  assert.equal(extrairDca([]), null);
+});
+
 /* ---------- 2ª rodada: só a Câmara (as fontes pesadas estão frescas) ---------- */
+const dcaAntes = { ...chamadasDca.porAno };
+const errosAntes = Object.values(JSON.parse(readFileSync(path.join(saida, 'anos', 'siconfi-2025.json'), 'utf-8')).itens).filter((r) => r.erro).length;
 const antesRgf = chamadasSiconfi.rgf;
+const lidosAntes = lidos.length;
 const metaB = await atualizar({ fontes, baixarZip: async () => { throw new Error('não devia baixar o TSE'); }, saida, hoje: new Date('2026-11-19T12:00:00Z'), log });
 await caso('2ª rodada no dia seguinte: atualiza só a Câmara e mantém o resto', () => {
-  assert.equal(chamadasSiconfi.rgf, antesRgf, 'não consultou o Tesouro de novo');
+  assert.ok(chamadasSiconfi.rgf - antesRgf <= errosAntes * 4, 'só as prefeituras que deram erro na véspera foram consultadas de novo no Tesouro');
   assert.equal(metaB.fontes.tse.atualizadoEm, meta1.fontes.tse.atualizadoEm);
   assert.notEqual(metaB.fontes.camara.atualizadoEm, meta1.fontes.camara.atualizadoEm);
   assert.ok(metaB.cargos.prefeitos.comNota > 0, 'mantém as notas de prefeitos');
+});
+
+await caso('2ª rodada: anos de contas já completos não são buscados de novo no Tesouro', () => {
+  for (const a of [2022, 2023, 2024]) assert.equal(chamadasDca.porAno[a], dcaAntes[a], `${a}: nenhuma consulta nova de balanço anual`);
+  assert.equal(chamadasDca.porAno[2025] - dcaAntes[2025], errosAntes, '2025: só as consultas que haviam falhado são refeitas');
+  assert.ok(errosAntes > 0 && errosAntes < 50, 'o teste tem falhas permanentes de propósito');
+  assert.equal(metaB.fontes.administracoes.atualizadoEm, meta1.fontes.administracoes.atualizadoEm, 'gestões só mudam na rotina semanal');
+  assert.equal(metaB.fontes.series.ok, true);
+});
+
+await caso('anos fechados ficam guardados: no dia seguinte só o ano em curso é lido da Câmara', () => {
+  for (const a of [2023, 2024, 2025]) assert.ok(existsSync(path.join(saida, 'anos', `federais-${a}.json`)), `resumo de ${a} guardado`);
+  assert.ok(!existsSync(path.join(saida, 'anos', 'federais-2026.json')), 'o ano em curso nunca é guardado como fechado');
+  const novos = lidos.slice(lidosAntes);
+  assert.ok(novos.length > 0 && novos.every((u) => u.includes('-2026.csv')), 'leu só os arquivos de 2026: ' + novos.filter((u) => !u.includes('-2026.csv')).join(', '));
+  const f = lerSaida('federais.json');
+  assert.equal(f.sessoes, 4 * SESSOES);
+  assert.equal(metaB.fontes.camara.janela.de, 2023);
+});
+
+await caso('cache de ano fechado: resumo gerado antes do fim do ano ou em formato antigo é refeito', async () => {
+  const guardados = {};
+  const cache = { ler: (a) => guardados[a] || null, gravar: (a, o) => { guardados[a] = o; } };
+  const base = { fontes, ano: 2026, hoje: new Date('2026-11-18T12:00:00Z'), cache };
+  await gerarFederais(base);
+  assert.deepEqual(Object.keys(guardados).sort(), ['2023', '2024', '2025']);
+  assert.equal(guardados[2025].sessoes.length, SESSOES);
+  let n = lidos.length;
+  await gerarFederais(base);
+  assert.equal(lidos.slice(n).filter((u) => !u.includes('-2026.csv')).length, 0, 'segunda vez não lê os anos fechados');
+  guardados[2025] = { ...guardados[2025], geradoEm: '2025-12-30T10:00:00Z' }; // gerado ainda em 2025: o ano podia não estar fechado
+  guardados[2024] = { ...guardados[2024], versao: 0 };
+  n = lidos.length;
+  await gerarFederais(base);
+  const refeitos = new Set(lidos.slice(n).filter((u) => !u.includes('-2026.csv')).map((u) => u.match(/-(\d{4})\.csv/)[1]));
+  assert.deepEqual([...refeitos].sort(), ['2024', '2025']);
+  n = lidos.length;
+  await gerarFederais({ ...base, usarCache: false });
+  assert.equal(new Set(lidos.slice(n).map((u) => u.match(/-(\d{4})\.csv/)[1])).size, 4, '"refazer tudo" lê os 4 anos de novo');
 });
 
 /* ---------- 3ª rodada: Câmara falha, sete dias depois o Tesouro falha ---------- */
