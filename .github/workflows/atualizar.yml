@@ -24,12 +24,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publicar:
+  # ETAPA 1 — coleta os dados e monta o site (é a parte demorada).
+  coletar:
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +41,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: site/dados
-          key: dados-${{ github.run_id }}
+          key: dados-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: dados-
 
       - name: Atualizar os dados
@@ -58,7 +56,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: site/dados
-          key: dados-${{ github.run_id }}
+          key: dados-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/configure-pages@v5
 
@@ -66,6 +64,17 @@ jobs:
         with:
           path: site
 
+  # ETAPA 2 — só publica o site que a etapa 1 montou (leva segundos).
+  # Separada de propósito: se a publicação falhar, o botão "Re-run failed jobs"
+  # refaz apenas esta etapa, sem repetir a coleta de 1h40.
+  publicar:
+    needs: coletar
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Publicar
         id: deploy
         uses: actions/deploy-pages@v4
