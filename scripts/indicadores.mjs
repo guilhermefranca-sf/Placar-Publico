@@ -12,6 +12,7 @@
 import { atribuirAno, atribuirMes, mesesNaJanela, AVISO_COBERTURA } from './administracoes.mjs';
 import { FUNCOES } from './series-fiscais.mjs';
 import { DEFS_CIDADES, PAGINA_CIDADES } from './ibge-cidades.mjs';
+import { METODO, mediaPonderada } from './nota.mjs';
 
 export const MSG_NAO_CONFIRMADO = 'Dado não encontrado ou não confirmado';
 
@@ -289,6 +290,51 @@ export function resumirSerie(pontos, gestao, janela, { ehTaxaMensal = false } = 
   return r;
 }
 
+const limitar01 = (x) => Math.max(0, Math.min(1, x));
+const fmtBR = (v, casas = 1) => Number(v).toFixed(casas).replace('.', ',');
+
+/**
+ * Índice econômico do presidente: resume três números nacionais (inflação, desemprego e dívida) só para a gestão em exercício.
+ * É sempre PARCIAL: não inclui saúde, educação, segurança, saneamento nem obras federais, que ainda não têm fonte integrada.
+ * Não atribui causa: inflação, emprego e dívida dependem também do Banco Central, do Congresso, do cenário internacional e do clima.
+ * A Selic fica de fora (quem a define é o Comitê de Política Monetária, não o presidente).
+ */
+export function notaPresidente({ gestoes, indicadores, janela }) {
+  const M = METODO.presidente;
+  const atual = (gestoes || []).find((g) => g.situacao === 'em exercício');
+  const base = { versao: 1, nome: M.nome, parcial: { usadas: 0, total: M.componentes.length, escopo: 'só economia e dívida; saúde, educação, segurança, saneamento e obras federais ainda não têm fonte integrada' } };
+  if (!atual) return { ...base, nota: null, comp: [], motivo: 'Não há gestão em exercício registrada para o período.' };
+  const meses = mesesNaJanela(janela, atual.inicio, atual.fim);
+  const gestao = { id: atual.id, nome: atual.nome ?? null, inicio: atual.inicio, mesesNoPeriodo: meses };
+  if (meses < M.minMeses) return { ...base, gestao, nota: null, comp: [], motivo: `A gestão atual (desde ${atual.inicio.slice(8, 10)}/${atual.inicio.slice(5, 7)}/${atual.inicio.slice(0, 4)}) tem só ${meses} meses dentro do período; o índice só aparece com pelo menos ${M.minMeses}, porque não dá para resumir um ano incompleto.` };
+
+  const resumo = (id) => (indicadores?.[id]?.situacao === 'ok' ? indicadores[id].porGestao?.[atual.id] || null : null);
+  const comp = M.componentes.map((c) => ({ k: c.k, peso: c.peso, s: null, f: `${MSG_NAO_CONFIRMADO}.` }));
+  const por = (k) => comp.find((c) => c.k === k);
+  const regras = Object.fromEntries(M.componentes.map((c) => [c.k, c.param]));
+
+  const ip = resumo('pres.ipca12');
+  if (ip && Number.isFinite(ip.ultimo?.v)) {
+    const { centro, tolerancia } = M.meta; const piso = centro - tolerancia; const teto = centro + tolerancia; const v = ip.ultimo.v;
+    const s = v >= piso && v <= teto ? 1 : v < piso ? limitar01(1 - (piso - v) / regras.inflacao.abaixo) : limitar01(1 - (v - teto) / regras.inflacao.acima);
+    Object.assign(por('inflacao'), { s: Math.round(s * 1000) / 10, f: `IPCA acumulado em 12 meses: ${fmtBR(v, 2)}% em ${ip.ultimo.p.slice(5)}/${ip.ultimo.p.slice(0, 4)}, último mês da gestão no período. A faixa da meta é de ${fmtBR(piso)}% a ${fmtBR(teto)}%.` });
+  }
+  const de = resumo('pres.desocupacao');
+  if (de && Number.isFinite(de.media)) {
+    const { melhor, pior } = regras.desocupacao;
+    Object.assign(por('desocupacao'), { s: Math.round(limitar01(1 - (de.media - melhor) / (pior - melhor)) * 1000) / 10, f: `Taxa de desocupação média de ${fmtBR(de.media, 2)}% nos ${de.meses} meses da gestão com dado, de ${de.de.slice(5)}/${de.de.slice(0, 4)} a ${de.ate.slice(5)}/${de.ate.slice(0, 4)} (PNAD Contínua).` });
+  }
+  const dv = resumo('pres.divida-bruta');
+  if (dv && Number.isFinite(dv.variacao) && dv.meses >= M.minMeses) {
+    Object.assign(por('divida'), { s: Math.round(limitar01(1 - dv.variacao / regras.divida.aumentoMax) * 1000) / 10, f: `Dívida bruta do governo geral: ${dv.variacao > 0 ? 'aumento' : dv.variacao < 0 ? 'queda' : 'sem variação'} de ${fmtBR(Math.abs(dv.variacao), 2)} ponto percentual do PIB, de ${fmtBR(dv.primeiro.v, 1)}% (${dv.primeiro.p.slice(5)}/${dv.primeiro.p.slice(0, 4)}) a ${fmtBR(dv.ultimo.v, 1)}% (${dv.ultimo.p.slice(5)}/${dv.ultimo.p.slice(0, 4)}).` });
+  } else if (dv) por('divida').f = `Menos de ${M.minMeses} meses de dívida da gestão no período: ${MSG_NAO_CONFIRMADO.toLowerCase()}.`;
+
+  const usadas = comp.filter((c) => c.s != null).length;
+  const nota = mediaPonderada(comp.map((c) => ({ peso: c.peso, s: c.s })), M.minIndicadores);
+  const ressalva = 'O índice resume apenas três números da economia nacional na gestão atual. Inflação, emprego e dívida dependem também do Banco Central, do Congresso, do cenário internacional e do clima; o índice não mede, sozinho, a atuação do presidente e não inclui saúde, educação, segurança, saneamento nem obras federais.';
+  return { ...base, gestao, parcial: { ...base.parcial, usadas }, nota, comp, ...(nota == null ? { motivo: `Só ${usadas} de ${M.componentes.length} indicadores têm dado confirmado; o índice precisa de pelo menos ${M.minIndicadores}.` } : { ressalva }) };
+}
+
 export function montarPresidente({ gestoes, series, janela, hoje, erros = [] }) {
   const indicadores = {};
   for (const ind of CATALOGO_PRESIDENTE.filter((i) => i.serie)) {
@@ -305,6 +351,7 @@ export function montarPresidente({ gestoes, series, janela, hoje, erros = [] }) 
   return {
     versao: 1, geradoEm: hoje.toISOString(), cargo: 'presidente', ente: { nome: 'Brasil', esfera: 'F' }, janela, aviso: AVISO_COBERTURA,
     gestoes: gestoes.filter((g) => noPerfil(g, janela)),
-    indicadores, erros
+    indicadores, erros,
+    indice: notaPresidente({ gestoes, indicadores, janela })
   };
 }

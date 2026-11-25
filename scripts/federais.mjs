@@ -5,7 +5,7 @@
 // Os anos já fechados são guardados em arquivos próprios (dados/anos/federais-AAAA.json) e não precisam ser
 // baixados de novo todo dia. Só o ano em curso é lido da Câmara em cada atualização.
 
-import { percorrerCsv, criarPercentil, arredondar, dataBR, reais, emLotes } from './util.mjs';
+import { percorrerCsv, criarPercentil, arredondar, dataBR, reais, emLotes, normalizar } from './util.mjs';
 import { METODO, mediaPonderada, atribuirPosicoes, pesoDe } from './nota.mjs';
 
 export const API = 'https://dadosabertos.camara.leg.br/api/v2';
@@ -13,7 +13,8 @@ export const ARQUIVOS = 'https://dadosabertos.camara.leg.br/arquivos';
 export const SIGLAS_PROJETO = new Set(['PL', 'PLP', 'PEC', 'PDL', 'PRC', 'MPV', 'PLV', 'PLN', 'PFC']);
 export const JANELA_ANOS = METODO.federais.janelaAnos;
 const MIN_VOTANTES_NOMINAL = 100; // uma votação nominal do Plenário tem centenas de votos
-const VERSAO_ANO = 1;             // muda quando o formato do arquivo de cada ano muda
+const VERSAO_ANO = 2;             // muda quando o formato do arquivo de cada ano muda (2: projetos com situação e número de autores)
+const DIAS_ENTRE_LEITURAS_DA_SITUACAO = 7; // a situação de um projeto muda com o tempo: os anos fechados são relidos a cada 7 dias
 const DIA = 86400000;
 
 export async function listarDeputados(json) {
@@ -39,12 +40,100 @@ export const anosDaJanela = (ano, janela = JANELA_ANOS) => Array.from({ length: 
 const anoFechadoValido = (ag, a) => ag && ag.versao === VERSAO_ANO && ag.ano === a && String(ag.geradoEm || '').slice(0, 4) > String(a);
 
 /**
+ * Situação atual de um projeto, vista pelo texto que a Câmara publica em "ultimoStatus_descricaoSituacao".
+ *   L  transformado em norma jurídica (virou lei, emenda constitucional, decreto legislativo etc.)
+ *   C  aprovado pela Câmara e a caminho (Senado, sanção, promulgação, veto, autógrafos)
+ *   M  aprovado em comissão em caráter conclusivo e aguardando prazo de recurso
+ *   A  arquivado, rejeitado, retirado ou prejudicado
+ *   O  transformado em nova proposição (o texto seguiu em outro projeto)
+ *   T  em tramitação (qualquer outra situação)
+ *   null  a Câmara não informou a situação
+ * Só L e C contam como "aprovado pela Casa". M aparece à parte e não conta: o Placar não tem o histórico de
+ * pareceres de cada comissão, então só enxerga quem ainda está nessa situação.
+ */
+export function classificarSituacao(descricao) {
+  const t = normalizar(descricao);
+  if (!t) return null;
+  if (/TRANSFORMAD[OA] EM NORMA JURIDICA|PROMULGAD/.test(t)) return 'L';
+  if (/TRANSFORMAD[OA] EM NOVA PROPOSICAO/.test(t)) return 'O';
+  if (/ARQUIVAD|REJEITAD|RETIRAD[OA] PELO AUTOR|PREJUDICAD|DEVOLVID|PERDEU A EFICACIA/.test(t)) return 'A';
+  if (/AGUARDANDO (ENVIO AO SENADO|APRECIACAO PELO SENADO|SANCAO|AUTOGRAFOS|PROMULGACAO|APRECIACAO DO VETO)|VETAD|VAI A (SANCAO|PROMULGACAO)|REMETID[OA] (AO SENADO|A SANCAO)/.test(t)) return 'C';
+  if (/AGUARDANDO RECURSO/.test(t)) return 'M';
+  return 'T';
+}
+
+/**
+ * Lê as proposições e os autores de UM ano e devolve, por deputado, a lista [data, situação, nº de deputados autores]
+ * dos projetos e propostas de autoria dele (não conta requerimento, indicação, emenda).
+ * statusOk = false quando o arquivo não traz a situação dos projetos (formato mudou): nesse caso nenhum projeto
+ * é tratado como "não aprovado"; o critério de projetos aprovados simplesmente fica sem dado.
+ */
+export async function lerProjetosDoAno({ fontes, ano }) {
+  const dadosProp = new Map(); // idProposicao -> [data, situação]
+  let temColuna = false;
+  let comSituacao = 0;
+  {
+    const texto = await fontes.texto(`${ARQUIVOS}/proposicoes/csv/proposicoes-${ano}.csv`);
+    percorrerCsv(texto, (l, ix) => {
+      temColuna = 'ultimoStatus_descricaoSituacao' in ix;
+      if (!SIGLAS_PROJETO.has(l[ix.siglaTipo])) return;
+      const data = String(l[ix.dataApresentacao]).slice(0, 10);
+      if (data.slice(0, 4) !== String(ano)) return;
+      const classe = temColuna ? classificarSituacao(l[ix.ultimoStatus_descricaoSituacao]) : null;
+      if (classe) comSituacao++;
+      dadosProp.set(l[ix.id], [data, classe]);
+    });
+  }
+  const autoresDe = new Map(); // idProposicao -> Set(idDeputado)
+  {
+    const texto = await fontes.texto(`${ARQUIVOS}/proposicoesAutores/csv/proposicoesAutores-${ano}.csv`);
+    percorrerCsv(texto, (l, ix) => {
+      const p = l[ix.idProposicao];
+      const d = l[ix.idDeputadoAutor];
+      if (!d || !dadosProp.has(p)) return;
+      if (!autoresDe.has(p)) autoresDe.set(p, new Set());
+      autoresDe.get(p).add(d);
+    });
+  }
+  const projetos = new Map(); // idDeputado -> [[data, situação, nº de autores]]
+  for (const [p, deps] of autoresDe) {
+    const [data, classe] = dadosProp.get(p);
+    for (const d of deps) {
+      if (!projetos.has(d)) projetos.set(d, []);
+      projetos.get(d).push([data, classe, deps.size]);
+    }
+  }
+  return { projetos: Object.fromEntries(projetos), statusOk: temColuna && comSituacao > 0 };
+}
+
+/** Conta os projetos de um deputado, a partir de uma data, por situação e por tipo de autoria. */
+export function resumirProjetos(porAno, id, desde) {
+  const r = { apresentados: 0, aprovadosCasa: 0, leis: 0, comissao: 0, arquivados: 0, tramitacao: 0, outros: 0, semSituacao: 0, sozinho: 0, coautoria: 0 };
+  for (const a of porAno) {
+    for (const [data, classe, nAut] of a.projetos[id] || []) {
+      if (data < desde) continue;
+      r.apresentados++;
+      if (nAut > 1) r.coautoria++; else r.sozinho++;
+      if (classe === 'L') { r.leis++; r.aprovadosCasa++; }
+      else if (classe === 'C') r.aprovadosCasa++;
+      else if (classe === 'M') r.comissao++;
+      else if (classe === 'A') r.arquivados++;
+      else if (classe === 'T') r.tramitacao++;
+      else if (classe === 'O') r.outros++;
+      else r.semSituacao++;
+    }
+  }
+  r.statusOk = porAno.every((a) => a.statusOk);
+  return r;
+}
+
+/**
  * Lê da Câmara os arquivos de UM ano e resume o que importa, de forma compacta:
  *   sessoes   datas das sessões deliberativas encerradas do Plenário (em ordem)
  *   presencas { idDeputado: "0101..." }  1 = presente na sessão de mesma posição
  *   nominais  datas das votações nominais do Plenário (em ordem)
  *   votou     { idDeputado: "0101..." }  1 = registrou voto
- *   projetos  { idDeputado: [datas] }    projetos e propostas de autoria (não conta requerimento, indicação, emenda)
+ *   projetos  { idDeputado: [[data, situação, nº de autores]] }  projetos e propostas de autoria (não conta requerimento, indicação, emenda)
  *   gasto     { idDeputado: reais }      cota parlamentar (valor do documento menos glosa)
  * `completo` guarda também o que o "Como votou?" precisa (ids, placar, voto de cada um). Só vale para o ano em curso.
  */
@@ -116,32 +205,8 @@ export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = 
     .map(([id]) => ({ id, data: plenario.get(id) }))
     .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.id < b.id ? -1 : 1));
 
-  // 4. Projetos e propostas de autoria
-  const dadosProp = new Map(); // idProposicao -> data
-  {
-    const texto = await fontes.texto(`${ARQUIVOS}/proposicoes/csv/proposicoes-${ano}.csv`);
-    percorrerCsv(texto, (l, ix) => {
-      if (!SIGLAS_PROJETO.has(l[ix.siglaTipo])) return;
-      const data = String(l[ix.dataApresentacao]).slice(0, 10);
-      if (data.slice(0, 4) !== String(ano)) return;
-      dadosProp.set(l[ix.id], data);
-    });
-  }
-  const projetos = new Map(); // idDeputado -> lista de datas
-  {
-    const jaContou = new Set();
-    const texto = await fontes.texto(`${ARQUIVOS}/proposicoesAutores/csv/proposicoesAutores-${ano}.csv`);
-    percorrerCsv(texto, (l, ix) => {
-      const p = l[ix.idProposicao];
-      const d = l[ix.idDeputadoAutor];
-      if (!d || !dadosProp.has(p)) return;
-      const chave = p + '|' + d;
-      if (jaContou.has(chave)) return;
-      jaContou.add(chave);
-      if (!projetos.has(d)) projetos.set(d, []);
-      projetos.get(d).push(dadosProp.get(p));
-    });
-  }
+  // 4. Projetos e propostas de autoria, com a situação atual de cada um
+  const { projetos, statusOk } = await lerProjetosDoAno({ fontes, ano });
 
   // 5. Cota parlamentar (valor do documento menos a glosa)
   const gastos = new Map(); // idDeputado -> total
@@ -179,7 +244,9 @@ export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = 
     presencas: presencasBits,
     nominais: nominais.map((n) => n.data),
     votou: votouBits,
-    projetos: Object.fromEntries(projetos),
+    projetos,
+    statusOk,
+    statusEm: hoje.toISOString(),
     gasto: Object.fromEntries([...gastos].map(([d, v]) => [d, Math.round(v * 100) / 100]))
   };
   return { agregado, extras: completo ? { nominais, detalhesVot, tipoDoVoto } : null };
@@ -194,6 +261,16 @@ function diasEmPausas(pausas, de, ate) {
     if (fim > ini) dias += Math.round((new Date(fim) - new Date(ini)) / DIA);
   }
   return dias;
+}
+
+const plural = (n, um, varios) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
+
+/** Frase que explica o critério "projetos aprovados" de um deputado. */
+function fraseAprovados(e, pAprov, desde) {
+  const p = e.proj;
+  if (!p.situacaoLida) return 'A Câmara não informou a situação atual dos projetos nos arquivos lidos, então este critério ficou sem dado. Isso não significa zero projetos aprovados.';
+  if (!p.historicoSuficiente) return `Histórico insuficiente: ${arredondar(e.meses, 1).toLocaleString('pt-BR')} meses de exercício no período, e este critério pede pelo menos ${METODO.federais.minMesesAprovados}. Zero projetos aprovados no início do mandato não é desempenho negativo; o índice usa os outros critérios. Até agora: ${plural(p.aprovadosCasa, 'projeto aprovado', 'projetos aprovados')} de ${plural(p.apresentados, 'apresentado', 'apresentados')}.`;
+  return `${plural(p.aprovadosCasa, 'projeto aprovado', 'projetos aprovados')} pelo Plenário da Câmara de ${plural(p.apresentados, 'apresentado', 'apresentados')} desde ${desde} (${p.aprovadosPorAno.toLocaleString('pt-BR')} por ano de exercício; ${plural(p.leis, 'virou lei', 'viraram lei')}), mais do que ${Math.floor(pAprov * 100)}% dos deputados com histórico suficiente.`;
 }
 
 /**
@@ -214,8 +291,19 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
   for (const a of anos) {
     let ag = a < ano && usarCache && cache ? cache.ler(a) : null;
     if (!anoFechadoValido(ag, a)) ag = null;
-    if (ag) aoAndar(`${a}: usando o resumo guardado`);
-    else {
+    if (ag) {
+      aoAndar(`${a}: usando o resumo guardado`);
+      // Presença, votos e cota de um ano fechado não mudam, mas a situação dos projetos sim (um projeto de 2023 pode ser aprovado hoje).
+      const idade = (hoje - new Date(ag.statusEm)) / DIA;
+      if (!(idade < DIAS_ENTRE_LEITURAS_DA_SITUACAO)) {
+        try {
+          aoAndar(`${a}: relendo a situação dos projetos`);
+          const r = await lerProjetosDoAno({ fontes, ano: a });
+          ag = { ...ag, projetos: r.projetos, statusOk: r.statusOk, statusEm: hoje.toISOString() };
+          if (cache) cache.gravar(a, ag);
+        } catch (e) { aoAndar(`${a}: não consegui reler a situação dos projetos (${String(e.message).slice(0, 80)}); mantendo a leitura anterior`); }
+      }
+    } else {
       aoAndar(`${a}: lendo os arquivos da Câmara`);
       const r = await lerAnoCamara({ fontes, ano: a, hoje, completo: a === ano });
       ag = r.agregado;
@@ -262,7 +350,8 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
     }
     const diasPausa = diasEmPausas(pausas, desde, hojeISO);
     const meses = Math.max(1, ((new Date(hojeISO) - new Date(desde)) / DIA - diasPausa) / 30.44);
-    const nProj = porAno.reduce((n, a) => n + (a.projetos[id] || []).filter((x) => x >= desde).length, 0);
+    const proj = resumirProjetos(porAno, id, desde);
+    const nProj = proj.apresentados;
     const gasto = Math.max(0, porAno.reduce((n, a) => n + (a.gasto[id] || 0), 0));
     return {
       ...base,
@@ -270,18 +359,27 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
       obs: desde > decimoDia ? `Primeira presença registrada em ${dataBR(desde)}; os números contam a partir daí.` : undefined,
       _pres: presentes / sessoesDesde,
       _vot: votacoesDesde ? votei / votacoesDesde : null,
-      _projMes: nProj / meses,
+      // Critério "projetos aprovados": só com situação conhecida e pelo menos 12 meses de exercício (histórico suficiente).
+      _aprovAno: proj.statusOk && meses >= METODO.federais.minMesesAprovados ? proj.aprovadosCasa / (meses / 12) : null,
       _cotaMes: gasto / meses,
       extra: {
         sessoes: [presentes, sessoesDesde], votos: [votei, votacoesDesde], projetos: nProj, gasto: Math.round(gasto), meses: arredondar(meses, 1),
+        proj: {
+          apresentados: proj.apresentados, aprovadosCasa: proj.aprovadosCasa, leis: proj.leis, comissao: proj.comissao,
+          arquivados: proj.arquivados, tramitacao: proj.tramitacao, outros: proj.outros, semSituacao: proj.semSituacao,
+          sozinho: proj.sozinho, coautoria: proj.coautoria, situacaoLida: proj.statusOk,
+          aprovadosPorAno: proj.statusOk ? arredondar(proj.aprovadosCasa / (meses / 12), 2) : null,
+          leisPorAno: proj.statusOk ? arredondar(proj.leis / (meses / 12), 2) : null,
+          historicoSuficiente: meses >= METODO.federais.minMesesAprovados
+        },
         ...(descSessoes || descVotos || diasPausa ? { licenca: { sessoes: descSessoes, votacoes: descVotos, dias: diasPausa } } : {})
       }
     };
   });
 
-  // 7. Comparações (projetos entre todos; cota entre colegas do mesmo estado)
+  // 7. Comparações (projetos aprovados entre todos; cota entre colegas do mesmo estado)
   const elegiveis = itens.filter((i) => i._pres != null);
-  const pctProj = criarPercentil(elegiveis.map((i) => i._projMes));
+  const pctAprov = criarPercentil(elegiveis.filter((i) => i._aprovAno != null).map((i) => i._aprovAno));
   const porUf = new Map();
   for (const i of elegiveis) {
     if (!porUf.has(i.uf)) porUf.set(i.uf, []);
@@ -290,11 +388,11 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
   const pctCota = new Map([...porUf].map(([uf, v]) => [uf, criarPercentil(v)]));
 
   for (const i of elegiveis) {
-    const pProj = pctProj(i._projMes);
+    const pAprov = i._aprovAno != null ? pctAprov(i._aprovAno) : null;
     const pCota = pctCota.get(i.uf)(i._cotaMes);
     const sPres = arredondar(i._pres * 100, 1);
     const sVot = i._vot == null ? null : arredondar(i._vot * 100, 1);
-    const sProj = arredondar(pProj * 100, 1);
+    const sAprov = pAprov == null ? null : arredondar(pAprov * 100, 1);
     const sCota = arredondar((1 - pCota) * 100, 1);
     const e = i.extra;
     const desde = dataBR(i.desde);
@@ -303,13 +401,13 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
     i.comp = [
       { k: 'pres', s: sPres, f: `Presente em ${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${desde} (${Math.round(i._pres * 100)}%).${notaLic(lic && lic.sessoes, ['sessão', 'sessões'])}` },
       { k: 'vot', s: sVot, f: e.votos[1] ? `Registrou voto em ${e.votos[0]} de ${e.votos[1]} votações nominais do Plenário desde ${desde}.${notaLic(lic && lic.votacoes, ['votação', 'votações'])}` : 'Ainda não houve votação nominal no período.' },
-      { k: 'proj', s: sProj, f: `Apresentou ${e.projetos} projetos e propostas desde ${desde} (${arredondar(i._projMes, 1).toLocaleString('pt-BR')} por mês de exercício), mais do que ${Math.floor(pProj * 100)}% dos deputados.` },
+      { k: 'aprov', s: sAprov, f: fraseAprovados(e, pAprov, desde) },
       { k: 'cota', s: sCota, f: `Gastou ${reais(e.gasto)} da cota desde ${desde} (${reais(e.gasto / e.meses)} por mês de exercício), menos do que ${Math.floor((1 - pCota) * 100)}% dos colegas de ${i.uf}.` }
     ];
     i.nota = mediaPonderada(i.comp.map((c) => ({ peso: pesoDe('federais', c.k), s: c.s })), 3);
     if (i.nota == null) i.motivo = 'Dados insuficientes para calcular o índice.';
   }
-  for (const i of itens) { delete i._pres; delete i._vot; delete i._projMes; delete i._cotaMes; if (i.obs === undefined) delete i.obs; }
+  for (const i of itens) { delete i._pres; delete i._vot; delete i._aprovAno; delete i._cotaMes; if (i.obs === undefined) delete i.obs; }
 
   const comNota = atribuirPosicoes(itens);
   const notas = itens.filter((i) => i.nota != null).map((i) => i.nota);

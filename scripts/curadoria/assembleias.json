@@ -1,0 +1,317 @@
+{
+ "versao": 1,
+ "pesquisadoEm": "2026-11-25",
+ "aviso": "Registro do que o Placar pesquisou sobre os dados abertos de cada Assembleia Legislativa. \"Pesquisada, não integrada\" quer dizer que existe portal ou API, mas o Placar ainda não leu nem conferiu dados por deputado dessa casa; por isso a casa fica sem índice. Nada aqui é nota nem dado de deputado.",
+ "fonteDoEstudo": "Vinicius Santos, 'Democracia em Formato JSON: As Assembleias Legislativas Estaduais do Portal ao Endpoint' (SciELO Preprints, 2025; https://doi.org/10.1590/SciELOPreprints.12275). O Placar não conferiu cada classificação do estudo.",
+ "itens": [
+  {
+   "uf": "AC",
+   "casa": "Aleac (Assembleia Legislativa do Acre)",
+   "api": "parcial",
+   "portais": [
+    "https://app.al.ac.leg.br/",
+    "https://sapl.al.ac.leg.br/api/"
+   ],
+   "observacao": "Segundo o estudo, há API parcial (sistema SAPL). O Placar ainda não verificou se traz verba, presença, votações ou projetos por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "AL",
+   "casa": "Aleal (Assembleia Legislativa de Alagoas)",
+   "api": "nao",
+   "portais": [
+    "https://www.al.al.leg.br/transparencia"
+   ],
+   "observacao": "Segundo o estudo, portal de transparência sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "AM",
+   "casa": "Aleam (Assembleia Legislativa do Amazonas)",
+   "api": "parcial",
+   "portais": [
+    "https://sapl.aleam.gov.br/swagger-ui.html"
+   ],
+   "observacao": "Segundo o estudo, há API parcial (SAPL e empenhos). O Placar ainda não verificou os dados por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "AP",
+   "casa": "Aleap (Assembleia Legislativa do Amapá)",
+   "api": "parcial",
+   "portais": [
+    "https://al.ap.leg.br/dados-abertos/"
+   ],
+   "observacao": "Segundo o estudo, há endpoint de leis. O Placar ainda não verificou os dados por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "BA",
+   "casa": "ALBA (Assembleia Legislativa da Bahia)",
+   "api": "nao",
+   "portais": [
+    "https://dadosabertos.al.ba.gov.br/",
+    "https://transparencia.al.ba.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, \"dados abertos\" sem API; transparência em formato de consulta.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "CE",
+   "casa": "Alece (Assembleia Legislativa do Ceará)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.ce.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, votações só em PDF.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "DF",
+   "casa": "CLDF (Câmara Legislativa do Distrito Federal)",
+   "api": "sim",
+   "portais": [
+    "https://dadosabertos.cl.df.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, portal de dados abertos com API (CKAN), classificado como de maturidade alta. O Placar ainda não verificou quais dados por deputado ele traz.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "ES",
+   "casa": "Ales (Assembleia Legislativa do Espírito Santo)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.es.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, ampla informação em portal, sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "GO",
+   "casa": "Alego (Assembleia Legislativa de Goiás)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.go.leg.br/dados-abertos/"
+   ],
+   "observacao": "Segundo o estudo, o portal de dados estava inacessível.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "MA",
+   "casa": "Alema (Assembleia Legislativa do Maranhão)",
+   "api": "nao",
+   "portais": [
+    "https://dadosabertos.al.ma.leg.br/",
+    "https://transparencia.al.ma.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, o portal apresentava erros técnicos.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "MG",
+   "casa": "ALMG (Assembleia Legislativa de Minas Gerais)",
+   "api": "sim",
+   "portais": [
+    "https://dadosabertos.almg.gov.br/"
+   ],
+   "observacao": "Dados abertos sobre comissões, deputados, legislação, proposições, contratos e verbas indenizatórias da legislatura em curso, segundo a própria ALMG (notícia de 17/2/2025). Segundo reportagem do Estado de Minas (dez/2024), a frequência em plenário e em comissões não é publicada em formato aberto. O Placar ainda não integrou a leitura destes dados.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "MS",
+   "casa": "Alems (Assembleia Legislativa de Mato Grosso do Sul)",
+   "api": "nao",
+   "portais": [
+    "https://dadosabertos.al.ms.gov.br/",
+    "https://transparencia.al.ms.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, portal robusto, sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "MT",
+   "casa": "ALMT (Assembleia Legislativa de Mato Grosso)",
+   "api": "sim",
+   "portais": [
+    "https://dadosabertos.al.mt.gov.br/",
+    "https://api.al.mt.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, API com proposições, votações e orçamento (maturidade alta). O Placar ainda não verificou os dados por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "PA",
+   "casa": "Alepa (Assembleia Legislativa do Pará)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.alepa.pa.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, a seção de dados apresentava erro de carregamento.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "PB",
+   "casa": "ALPB (Assembleia Legislativa da Paraíba)",
+   "api": "nao",
+   "portais": [
+    "https://dadosabertos.al.pb.leg.br/",
+    "https://transparencia.al.pb.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, declara \"dados abertos\", mas sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "PE",
+   "casa": "Alepe (Assembleia Legislativa de Pernambuco)",
+   "api": "sim",
+   "portais": [
+    "https://dadosabertos.alepe.pe.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, API com proposições, votações e orçamento (maturidade alta). O Placar ainda não verificou os dados por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "PI",
+   "casa": "Alepi (Assembleia Legislativa do Piauí)",
+   "api": "nao",
+   "portais": [
+    "https://www.alepi.pi.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, maturidade baixa; o próprio estudo registra que esta casa não foi avaliada em detalhe.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "PR",
+   "casa": "Alep (Assembleia Legislativa do Paraná)",
+   "api": "sim",
+   "portais": [
+    "https://dadosabertos.assembleia.pr.leg.br/",
+    "https://webservices.assembleia.pr.leg.br/api/public/"
+   ],
+   "observacao": "Segundo o estudo, API com proposições, votações e orçamento (maturidade alta). O Placar ainda não verificou os dados por deputado.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "RJ",
+   "casa": "Alerj (Assembleia Legislativa do Rio de Janeiro)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.alerj.rj.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, sem API nem arquivos estruturados.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "RN",
+   "casa": "ALRN (Assembleia Legislativa do Rio Grande do Norte)",
+   "api": "nao",
+   "portais": [
+    "https://dadosabertos.al.rn.leg.br/",
+    "https://transparencia.al.rn.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, portal com arquivos em CSV, JSON e XLSX, mas sem API. O Placar ainda não verificou o conteúdo.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "RO",
+   "casa": "Alero (Assembleia Legislativa de Rondônia)",
+   "api": "parcial",
+   "portais": [
+    "https://dadosabertos.al.ro.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, dados abertos apenas de servidores.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "RR",
+   "casa": "Alerr (Assembleia Legislativa de Roraima)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.rr.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, portal abrangente, sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "RS",
+   "casa": "Alergs (Assembleia Legislativa do Rio Grande do Sul)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.rs.gov.br/"
+   ],
+   "observacao": "Segundo o estudo, sem API explícita.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "SC",
+   "casa": "Alesc (Assembleia Legislativa de Santa Catarina)",
+   "api": "nao",
+   "portais": [
+    "https://dados.sc.gov.br/dataset"
+   ],
+   "observacao": "Segundo o estudo, dados legislativos pelo portal de dados do estado, sem API própria.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "SE",
+   "casa": "Alese (Assembleia Legislativa de Sergipe)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.se.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, foco em legislação; maturidade baixa.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  },
+  {
+   "uf": "SP",
+   "casa": "Alesp (Assembleia Legislativa de São Paulo)",
+   "api": "sim",
+   "portais": [
+    "https://www.al.sp.gov.br/dados-abertos/"
+   ],
+   "observacao": "A própria Alesp publica arquivos XML: despesas de gabinete por ano (despesas_gabinetes_AAAA.xml, atualizado diariamente, com documentação dos campos), proposituras e autores, presença e votações nas comissões, e uma API REST com presença em plenário por deputado. O Placar lê hoje só as despesas de gabinete; presença, votações e projetos ainda não foram integrados porque o layout desses arquivos não pôde ser conferido.",
+   "statusPlacar": "integrada-parcial",
+   "criteriosLidos": [
+    "cota"
+   ],
+   "urlLida": "https://www.al.sp.gov.br/repositorioDados/deputados/despesas_gabinetes_AAAA.xml",
+   "documentacao": "https://www.al.sp.gov.br/repositorioDados/docs/deputados/despesas_gabinetes.pdf"
+  },
+  {
+   "uf": "TO",
+   "casa": "Aleto (Assembleia Legislativa do Tocantins)",
+   "api": "nao",
+   "portais": [
+    "https://transparencia.al.to.leg.br/"
+   ],
+   "observacao": "Segundo o estudo, portal abrangente, sem API.",
+   "statusPlacar": "pesquisada-nao-integrada",
+   "criteriosLidos": []
+  }
+ ]
+}

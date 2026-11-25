@@ -71,9 +71,11 @@ function demoConstruir() {
       const p = demoPessoa(r, { id: String(++contador), uf });
       const pres = demoRound(100 - Math.pow(r(), 1.7) * 85);
       const vot = demoRound(100 - Math.pow(r(), 1.8) * 80);
-      const proj = demoRound(r() * 100);
+      const aprov = demoRound(r() * 100);
       const cota = demoRound(r() * 100);
-      const nProj = Math.round(proj / 100 * 150);
+      const nProj = Math.round(10 + r() * 140);
+      const nAprov = Math.round(aprov / 100 * Math.min(nProj, 24));
+      const nLeis = Math.min(nAprov, Math.round(nAprov * 0.35));
       const gasto = Math.round(240000 + (100 - cota) / 100 * 2600000);
       const item = {
         id: p.id, nome: p.nome, partido: p.partido, uf,
@@ -81,12 +83,12 @@ function demoConstruir() {
         comp: [
           { k: 'pres', s: pres, f: `Presente em ${Math.round(pres / 100 * SESSOES)} de ${SESSOES} sessões deliberativas do Plenário desde 01/02/2023 (${Math.round(pres)}%).` },
           { k: 'vot', s: vot, f: `Registrou voto em ${Math.round(vot / 100 * VOTACOES)} de ${VOTACOES} votações nominais do Plenário desde 01/02/2023.` },
-          { k: 'proj', s: proj, f: `Apresentou ${nProj} projetos e propostas desde 01/02/2023, mais do que ${Math.floor(proj)}% dos deputados.` },
+          { k: 'aprov', s: aprov, f: `${nAprov} projetos de autoria aprovados pela Câmara (${nLeis} viraram lei) em 45,5 meses de exercício, mais do que ${Math.floor(aprov)}% dos deputados.` },
           { k: 'cota', s: cota, f: `Gastou R$ ${demoPct(gasto)} da cota desde 01/02/2023, menos do que ${Math.floor(100 - cota)}% dos colegas de ${uf}.` }
         ]
       };
-      item.nota = demoNota(item.comp, { pres: 30, vot: 25, proj: 20, cota: 25 });
-      item.extra = { sessoes: [Math.round(pres / 100 * SESSOES), SESSOES], votos: [Math.round(vot / 100 * VOTACOES), VOTACOES], projetos: nProj, gasto, meses: 45.5 };
+      item.nota = demoNota(item.comp, { pres: 20, vot: 20, aprov: 30, cota: 30 });
+      item.extra = { sessoes: [Math.round(pres / 100 * SESSOES), SESSOES], votos: [Math.round(vot / 100 * VOTACOES), VOTACOES], projetos: nProj, gasto, meses: 45.5, proj: { apresentados: nProj, aprovadosCasa: nAprov, leis: nLeis, comissao: Math.round((nProj - nAprov) * 0.1), arquivados: Math.round((nProj - nAprov) * 0.3), tramitacao: Math.round((nProj - nAprov) * 0.55), outros: 0, semSituacao: 0, sozinho: Math.round(nProj * 0.6), coautoria: nProj - Math.round(nProj * 0.6), situacaoLida: true, aprovadosPorAno: demoRound(nAprov / 3.79), leisPorAno: demoRound(nLeis / 3.79), historicoSuficiente: true } };
       federais.push(item);
     }
   }
@@ -102,14 +104,28 @@ function demoConstruir() {
     const pessoal = demoRound(limP * (0.55 + r2() * 0.6));
     const divida = demoRound(limD * (r2() * 0.9) - (r2() < 0.2 ? limD * 0.2 : 0));
     const feitas = r2() < 0.8 ? 10 : 6 + Math.floor(r2() * 4);
-    const sP = demoRound(Math.max(0, Math.min(100, 100 * (1.1 - pessoal / limP) / 0.3)));
-    const sD = demoRound(Math.max(0, Math.min(100, 100 * (1 - Math.max(0, divida) / limD) / 0.5)));
-    const comp = [
-      { k: 'pessoal', s: sP, f: `Gastou ${pessoal.toLocaleString('pt-BR')}% da receita corrente líquida com pessoal em 2025. O limite da Lei de Responsabilidade Fiscal é ${limP}%.` },
-      { k: 'divida', s: sD, f: `Dívida consolidada líquida de ${divida.toLocaleString('pt-BR')}% da receita corrente líquida. O limite é ${limD}%.` }
-    ];
     const contas = { pessoal, divida, limitePessoal: limP, limiteDivida: limD, rgf: 'Q3', entregas: { feitas, esperado: 10, rreo: Math.min(6, feitas), rgf: Math.max(0, Math.min(3, feitas - 6)), dca: feitas >= 10 ? 1 : 0 } };
-    return { comp, contas, nota: demoNota(comp, { pessoal: 60, divida: 40 }) };
+    const E = esfera !== 'M';
+    const pares = E ? 'estados' : 'municípios do mesmo estado';
+    const nPares = E ? 27 : 15;
+    const sorteio = () => demoRound(8 + r2() * 90);
+    const area = (k, s, texto) => (s == null ? { k, peso: 20, s: null, f: 'Sem dado confiável para esta área (exemplo inventado).' } : { k, peso: 20, s, f: `${texto}; pontuação ${demoPct(s)} entre ${nPares} ${pares} (exemplo inventado).` });
+    const faltaSaude = !E && r2() < 0.2, faltaEdu = !E && r2() < 0.2;
+    const comp = [
+      area('saude', faltaSaude ? null : sorteio(), `Mortalidade infantil de ${demoPct(demoRound(8 + r2() * 12))} por mil nascidos vivos (2022 a 2025)`),
+      area('educacao', faltaEdu ? null : sorteio(), `Ideb de ${demoPct(demoRound(3.5 + r2() * 3))} (nota de 0 a 10)`),
+      E ? area('seguranca', sorteio(), `Homicídios dolosos: ${demoPct(demoRound(8 + r2() * 30))} vítimas por 100 mil habitantes`)
+        : { k: 'seguranca', peso: 20, s: null, na: true, f: 'Não se aplica a prefeitos: a segurança pública é responsabilidade principalmente estadual.' },
+      { k: 'infra', peso: 20, s: null, sem: 'fonte', f: 'Ainda sem indicador de resultado com fonte aberta confirmada. O Placar não usa gasto como se fosse resultado.' },
+      area('saneamento', sorteio(), `Água da rede geral em ${demoPct(demoRound(60 + r2() * 39))}% dos domicílios (Censo 2022)`)
+    ];
+    const validas = comp.filter(c => c.s != null);
+    const minimo = E ? 3 : 2;
+    const parcial = { usadas: validas.length, aplicaveis: E ? 4 : 3, total: 5, faltam: comp.filter(c => c.s == null).map(c => c.k) };
+    const nota = validas.length >= minimo ? demoNota(validas, { saude: 20, educacao: 20, seguranca: 20, infra: 20, saneamento: 20 }) : null;
+    const base = { comp, contas, parcial };
+    if (nota == null) return { ...base, nota: null, motivo: `Só ${validas.length} de ${E ? 4 : 3} áreas aplicáveis têm dado confiável; o mínimo é ${minimo}.` };
+    return { ...base, nota, ressalva: 'Saneamento é um retrato do Censo 2022, não resultado da gestão atual. Resultados de serviços públicos dependem de vários níveis de governo: o índice não prova mérito nem culpa de quem governa. (Exemplo inventado.)' };
   };
 
   const prefeitos = {};
@@ -121,7 +137,7 @@ function demoConstruir() {
     for (let k = 0; k < 15; k++) {
       const municipio = `${DEMO_PREFIXOS[(k + uf.charCodeAt(0)) % DEMO_PREFIXOS.length]} ${DEMO_BASES[k % DEMO_BASES.length]}${k >= DEMO_BASES.length ? ' ' + (k - DEMO_BASES.length + 2) : ''}`;
       const p = demoPessoa(r, { id: String(++cp), uf, municipio, cod: String(10000 + k), ibge: 1000000 + cp % 100000, populacao: Math.round(2000 + r() * r() * 900000) });
-      if (r() < 0.1) Object.assign(p, { nota: null, comp: [], motivo: 'O Tesouro Nacional não tem os relatórios fiscais de 2025 desta administração.' });
+      if (r() < 0.1) Object.assign(p, { nota: null, comp: [], bloqueio: 'mandato-novo', motivo: 'O mandato atual começou em 2025 e os dados do IBGE ainda são anteriores a ele; o índice não é dado enquanto não houver dado do mandato atual. (Exemplo inventado.)' });
       else Object.assign(p, executivo(r, 'M'));
       prefeitos[uf].push(p);
       todosPref.push(p);
@@ -150,7 +166,7 @@ function demoConstruir() {
       tse: { ok: true, atualizadoEm: agora, eleicoes: { municipal: 2024, governadores: 2022, estaduais: 2022 }, avisos: 0 },
       siconfi: { ok: true, atualizadoEm: agora, exercicio: 2025, entes: todosPref.length + governadores.length, comErro: 0 },
       historico: { ok: true, atualizadoEm: agora, total: federais.length, falhas: 0, semHistorico: 0 },
-      administracoes: { ok: true, atualizadoEm: agora }, ibge: { ok: true, atualizadoEm: agora }, presidente: { ok: true, atualizadoEm: agora }, series: { ok: true, atualizadoEm: agora }, precos: { ok: true, atualizadoEm: agora }
+      administracoes: { ok: true, atualizadoEm: agora }, ibge: { ok: true, atualizadoEm: agora }, presidente: { ok: true, atualizadoEm: agora }, series: { ok: true, atualizadoEm: agora }, precos: { ok: true, atualizadoEm: agora }, seguranca: { ok: true, atualizadoEm: agora }, estaduais: { ok: true, atualizadoEm: agora }, indice: { ok: true, atualizadoEm: agora }
     },
     cargos: {
       federais: { total: federais.length, comNota: fedCom, media: demoMedia(federais) },
@@ -163,10 +179,32 @@ function demoConstruir() {
   for (const uf of UFS) {
     const nE = Math.min(94, DEMO_BANCADA[uf] * 2);
     const rE = aleatorio(1000 + UFS.indexOf(uf));
-    DEMO.estaduais[uf] = { uf, ano: 2022, itens: Array.from({ length: nE }, (_, k) => demoPessoa(rE, { id: String(600000 + UFS.indexOf(uf) * 100 + k), uf, situacao: k % 3 ? 'Eleito por quociente partidário' : 'Eleito por média' })) };
+    const itensE = Array.from({ length: nE }, (_, k) => demoPessoa(rE, { id: String(600000 + UFS.indexOf(uf) * 100 + k), uf, situacao: k % 3 ? 'Eleito por quociente partidário' : 'Eleito por média' }));
+    if (uf === 'SP') {
+      itensE.forEach((it, k) => {
+        if (k % 17 === 5) { Object.assign(it, { nota: null, comp: [], motivo: 'Menos de 12 meses de despesas registradas no período; com tão pouco histórico a comparação não é justa (zero não é nota baixa). (Exemplo inventado.)' }); return; }
+        const s = demoRound(rE() * 100);
+        it.comp = [
+          { k: 'cota', peso: 30, s, f: `Verba de gabinete: média de R$ ${demoPct(Math.round(60000 + (100 - s) * 700))} por mês em 40 meses; pontuação ${demoPct(s)} entre ${nE} colegas da mesma Assembleia (exemplo inventado).` },
+          { k: 'pres', peso: 20, s: null, f: 'Presença: a leitura desses dados da Assembleia ainda não foi integrada.' },
+          { k: 'vot', peso: 20, s: null, f: 'Votações: a leitura desses dados da Assembleia ainda não foi integrada.' },
+          { k: 'aprov', peso: 30, s: null, f: 'Projetos aprovados: a leitura desses dados da Assembleia ainda não foi integrada.' }
+        ];
+        it.nota = s; it.parcial = { usadas: 1, total: 4, faltam: ['pres', 'vot', 'aprov'] };
+        it.ressalva = 'Índice parcial: só 1 de 4 critérios (uso da verba de gabinete). Mede só quanto o deputado gasta em relação aos colegas, não a qualidade do mandato. (Exemplo inventado.)';
+        it.fonteDados = 'Assembleia Legislativa do Estado de São Paulo (Alesp)';
+      });
+      demoPosicoes(itensE);
+    } else {
+      const motivo = 'A Assembleia Legislativa deste estado ainda não tem leitura integrada ao Placar: o Placar só calcula o índice com dados que consegue ler e comparar de forma justa entre os colegas da mesma casa.';
+      itensE.forEach(it => Object.assign(it, { nota: null, comp: [], rank: null, motivo }));
+    }
+    DEMO.estaduais[uf] = { uf, ano: 2022, itens: itensE };
     totE += nE;
   }
   DEMO.meta.cargos.estaduais.total = totE;
+  DEMO.meta.cargos.estaduais.comNota = DEMO.estaduais.SP.itens.filter(i => i.nota != null).length;
+  DEMO.meta.cargos.estaduais.media = demoMedia(DEMO.estaduais.SP.itens);
 
   /* Como votou? (votações fictícias, com matérias que não existem) */
   const rv = aleatorio(777);
@@ -438,7 +476,28 @@ function demoPresidente() {
     for (const g of todas) { const x = demoResumoSerie(serie, g, janela, id === 'pres.ipca'); if (x) porGestao[g.id] = x; }
     indicadores[id] = { situacao: 'ok', ultimoMes: serie[serie.length - 1].p, serie, porGestao };
   }
-  return { versao: 1, geradoEm: new Date().toISOString(), cargo: 'presidente', ente: { nome: 'Brasil', esfera: 'F' }, janela, aviso: DEMO_AVISO, gestoes: todas.filter(g => (g.inicio <= janela.ate && g.fim >= janela.de) || g.situacao !== 'encerrada'), indicadores, erros: [] };
+  const clamp = x => demoRound(Math.max(0, Math.min(100, x)));
+  const serieDe = id => indicadores[id].serie.map(p => p.v);
+  const infl = serieDe('pres.ipca12').slice(-1)[0];
+  const desoc = serieDe('pres.desocupacao');
+  const desocMedia = demoRound2(desoc.reduce((a, b) => a + b, 0) / desoc.length);
+  const dv = serieDe('pres.divida-bruta');
+  const dDivida = demoRound2(dv[dv.length - 1] - dv[0]);
+  const sInfl = clamp(infl > 4.5 ? 100 * (1 - (infl - 4.5) / 6) : infl < 1.5 ? 100 * (1 - (1.5 - infl) / 3) : 100);
+  const sDes = clamp(100 * (12 - desocMedia) / 8);
+  const sDiv = clamp(100 * (1 - Math.max(0, dDivida) / 10));
+  const compInd = [
+    { k: 'inflacao', peso: 35, s: sInfl, f: `IPCA em 12 meses de ${demoPct(infl)}% no último mês disponível (meta de 3%, com tolerância de 1,5 ponto). Exemplo inventado.` },
+    { k: 'desocupacao', peso: 35, s: sDes, f: `Desocupação média de ${demoPct(desocMedia)}% nos meses da gestão no período. Exemplo inventado.` },
+    { k: 'divida', peso: 30, s: sDiv, f: `Dívida bruta variou ${demoPct(dDivida)} ponto percentual do PIB entre o primeiro e o último mês da gestão no período. Exemplo inventado.` }
+  ];
+  const indice = {
+    versao: 1, nome: 'Índice econômico', gestao: 'Presidente Atual Exemplo',
+    parcial: { usadas: 3, total: 3, escopo: 'só economia e dívida; saúde, educação, segurança, saneamento e obras federais ainda não têm fonte integrada' },
+    nota: demoNota(compInd, { inflacao: 35, desocupacao: 35, divida: 30 }), comp: compInd,
+    ressalva: 'A economia depende de muitos fatores, internos e externos (Banco Central, Congresso, câmbio, clima, cenário internacional). O índice não atribui o resultado só à pessoa do presidente e não mede as demais áreas do governo federal. Exemplo inventado.'
+  };
+  return { versao: 1, geradoEm: new Date().toISOString(), cargo: 'presidente', ente: { nome: 'Brasil', esfera: 'F' }, indice, janela, aviso: DEMO_AVISO, gestoes: todas.filter(g => (g.inicio <= janela.ate && g.fim >= janela.de) || g.situacao !== 'encerrada'), indicadores, erros: [] };
 }
 
 function demoExecutivoPorIbge(ibge) {
@@ -453,6 +512,16 @@ function demoExecutivoPorIbge(ibge) {
   throw new Error(`HTTP 404 em executivos/${ibge}.json`);
 }
 
+/* Registro (inventado) das Assembleias: só mostra o formato da tabela da página Fontes. */
+function demoAssembleias() {
+  return {
+    versao: 1, pesquisadoEm: demoIso(new Date()),
+    aviso: 'Registro de demonstração: situação inventada, só para mostrar a tabela. Nada aqui é nota nem dado de deputado.',
+    fonteDoEstudo: 'Demonstração.',
+    itens: UFS.map(uf => ({ uf, casa: `Assembleia Legislativa (${uf}) — exemplo`, api: uf === 'SP' ? 'sim' : 'nao', portais: [], observacao: uf === 'SP' ? 'Lê hoje só as despesas de gabinete (exemplo).' : 'Pesquisada, ainda não integrada (exemplo).', statusPlacar: uf === 'SP' ? 'integrada-parcial' : 'pesquisada-nao-integrada', criteriosLidos: uf === 'SP' ? ['cota'] : [] }))
+  };
+}
+
 function gerarDemo(nome) {
   demoConstruir();
   if (nome === 'meta.json') return DEMO.meta;
@@ -463,6 +532,7 @@ function gerarDemo(nome) {
   if (nome === 'votos.json') return DEMO.votos;
   if (nome === 'correcoes.json') return DEMO.correcoes;
   if (nome === 'indicadores.json') return INDICADORES_DEMO;
+  if (nome === 'assembleias.json') return demoAssembleias();
   if (nome === 'executivos/presidente.json') return demoPresidente();
   if (nome === 'precos.json') return PRECOS_DEMO; // números fictícios (site/precos-demo.js)
   const ex = /^executivos\/(\d+)\.json$/.exec(nome);

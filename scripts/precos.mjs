@@ -79,17 +79,16 @@ const desescapar = (s) => s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCo
   .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 
-/**
- * Lê a primeira aba de uma planilha .xlsx. Devolve [{ n: numero da linha, c: { A: 'texto', B: '41275', ... } }].
- * Textos vêm do arquivo de textos compartilhados; números e datas (que no Excel são números) vêm como texto.
- */
-export function lerPlanilha(buf) {
-  const ler = abrirZip(buf);
-  const planilha = (ler('xl/worksheets/sheet1.xml') || ler('xl/worksheets/sheet.xml'))?.toString('utf8');
-  if (!planilha) throw new Error('Planilha sem aba de dados.');
+/** Textos compartilhados de uma planilha (as células de texto apontam para esta lista). */
+function textosDaPlanilha(ler) {
   const textos = [];
   const ss = ler('xl/sharedStrings.xml')?.toString('utf8');
   if (ss) for (const si of ss.matchAll(/<si>([\s\S]*?)<\/si>/g)) textos.push(desescapar([...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join('')));
+  return textos;
+}
+
+/** Linhas de uma aba (xml da aba): [{ n: número da linha, c: { A: 'texto', B: '41275', ... } }]. */
+function linhasDaAba(planilha, textos) {
   const linhas = [];
   for (const r of planilha.matchAll(/<row\b[^>]*?\br="(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
     if (!r[2]) continue; // linha vazia, escrita como <row ... />
@@ -110,6 +109,47 @@ export function lerPlanilha(buf) {
     if (Object.keys(c).length) linhas.push({ n: Number(r[1]), c });
   }
   return linhas;
+}
+
+/**
+ * Lê a primeira aba de uma planilha .xlsx. Devolve [{ n: numero da linha, c: { A: 'texto', B: '41275', ... } }].
+ * Textos vêm do arquivo de textos compartilhados; números e datas (que no Excel são números) vêm como texto.
+ */
+export function lerPlanilha(buf) {
+  const ler = abrirZip(buf);
+  const planilha = (ler('xl/worksheets/sheet1.xml') || ler('xl/worksheets/sheet.xml'))?.toString('utf8');
+  if (!planilha) throw new Error('Planilha sem aba de dados.');
+  return linhasDaAba(planilha, textosDaPlanilha(ler));
+}
+
+/**
+ * Lê TODAS as abas de uma planilha .xlsx. Devolve [{ nome, linhas }], na ordem do arquivo.
+ * Se o arquivo não declarar os nomes das abas, usa "Aba 1", "Aba 2"...
+ */
+export function lerPlanilhas(buf) {
+  const ler = abrirZip(buf);
+  const textos = textosDaPlanilha(ler);
+  const wb = ler('xl/workbook.xml')?.toString('utf8') || '';
+  const rels = ler('xl/_rels/workbook.xml.rels')?.toString('utf8') || '';
+  const alvoDe = new Map([...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [(m[0].match(/\bId="([^"]+)"/) || [])[1], (m[0].match(/\bTarget="([^"]+)"/) || [])[1]]));
+  const abas = [];
+  for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
+    const nome = desescapar((m[0].match(/\bname="([^"]*)"/) || [])[1] || '');
+    const rid = (m[0].match(/\br:id="([^"]+)"/) || [])[1];
+    const alvo = alvoDe.get(rid);
+    if (!alvo) continue;
+    const caminho = alvo.startsWith('/') ? alvo.slice(1) : 'xl/' + alvo.replace(/^\.\//, '');
+    const xml = ler(caminho)?.toString('utf8');
+    if (xml) abas.push({ nome, linhas: linhasDaAba(xml, textos) });
+  }
+  if (abas.length) return abas;
+  // Sem workbook.xml legível: tenta sheet1, sheet2... em ordem.
+  for (let k = 1; k < 60; k++) {
+    const xml = ler(`xl/worksheets/sheet${k}.xml`)?.toString('utf8');
+    if (!xml) break;
+    abas.push({ nome: `Aba ${k}`, linhas: linhasDaAba(xml, textos) });
+  }
+  return abas;
 }
 
 /** Acha a linha de títulos (a que tem "PRODUTO" e "PREÇO MÉDIO REVENDA") e devolve as linhas de dados como objetos pelo título. */

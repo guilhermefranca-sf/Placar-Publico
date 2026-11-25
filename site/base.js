@@ -27,19 +27,19 @@ const NOMES_UF = { AC:'Acre', AL:'Alagoas', AP:'Amapá', AM:'Amazonas', BA:'Bahi
 const CARGOS = {
   federais: {
     rotulo: 'Deputados federais', singular: 'Deputado federal', nota: true,
-    lead: 'Presença no Plenário, votos, projetos e uso da cota parlamentar. Os números vêm dos dados abertos da Câmara e são recalculados todo dia.'
+    lead: 'Uso da cota parlamentar, votações nominais, presença no Plenário e projetos aprovados. Os números vêm dos dados abertos da Câmara e são recalculados todo dia.'
   },
   governadores: {
     rotulo: 'Governadores', singular: 'Governador(a)', nota: true,
-    lead: 'O índice de responsabilidade fiscal olha só as contas do governo estadual: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal. Ele não mede saúde, educação ou obras.'
+    lead: 'O índice de serviços públicos compara cada estado com os demais em saúde, educação, segurança e saneamento (infraestrutura ainda sem fonte). É um índice parcial: mostra de quantas áreas ele é feito. Gasto com pessoal e dívida seguem no perfil, só como informação.'
   },
   prefeitos: {
     rotulo: 'Prefeitos', singular: 'Prefeito(a)', nota: true,
-    lead: 'O índice de responsabilidade fiscal olha só as contas da prefeitura: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal. Ele não mede saúde, educação ou obras.'
+    lead: 'O índice de serviços públicos compara cada município com os do mesmo estado em saúde, educação e saneamento (segurança não se aplica a prefeituras; infraestrutura ainda sem fonte). É um índice parcial: mostra de quantas áreas ele é feito. Gasto com pessoal e dívida seguem no perfil, só como informação.'
   },
   estaduais: {
-    rotulo: 'Deputados estaduais', singular: 'Deputado(a) estadual', nota: false,
-    lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). O índice ainda não existe: veja o motivo abaixo.'
+    rotulo: 'Deputados estaduais', singular: 'Deputado(a) estadual', nota: true,
+    lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). Só as assembleias cujos dados o Placar consegue ler têm índice, e ele é parcial. As demais aparecem sem índice, com o motivo.'
   }
 };
 // Tipos de proposição: PL, PEC etc. As siglas fora desta lista aparecem como vieram da API.
@@ -54,8 +54,8 @@ const NOMES_TIPO = {
 const SIGLAS_PROJETO = new Set(['PL', 'PLP', 'PEC', 'PDL', 'PRC', 'MPV', 'PLV', 'PLN', 'PFC']);
 const SIGLAS_REQUERIMENTO = new Set(['REQ', 'RIC', 'INC', 'RCP']);
 
-/* Nome do índice em cada cargo. Para prefeitos e governadores ele mede só duas contas fiscais, e o nome diz isso. */
-const nomeIndice = cargo => (['governadores', 'prefeitos', 'executivos'].includes(cargo) ? 'índice de responsabilidade fiscal' : 'índice');
+/* Nome do índice em cada cargo. Governadores e prefeitos: serviços públicos em cinco áreas; presidente: economia; estaduais: parcial. */
+const nomeIndice = cargo => ({ governadores: 'índice de serviços públicos', prefeitos: 'índice de serviços públicos', executivos: 'índice de serviços públicos', presidente: 'índice econômico', estaduais: 'índice parcial' }[cargo] || 'índice');
 const ORDEM_CARGOS = ['federais', 'governadores', 'prefeitos', 'estaduais'];
 
 /* ---------- 2. Utilitários ---------- */

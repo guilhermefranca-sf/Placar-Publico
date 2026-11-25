@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buscar, gravarJson, lerJsonSeExistir, lerDoZip, arredondar } from './util.mjs';
-import { METODO, atribuirPosicoes } from './nota.mjs';
+import { METODO, atribuirPosicoes, compacto, destaques, mediaDasNotas } from './nota.mjs';
 import { gerarFederais, enriquecerVotos, listarDeputados, JANELA_ANOS } from './federais.mjs';
 import { gerarHistoricos } from './historico.mjs';
 import { gerarEleitos, anosVigentes, UFS } from './tse.mjs';
@@ -21,6 +21,9 @@ import { carregarEntes, indexarEntes, acharMunicipio, acharMunicipioParecido, ge
 import { atualizarAdministracoes, atualizarIbge, atualizarPresidente, atualizarExecutivos } from './executivos.mjs';
 import { atualizarPrecos } from './precos.mjs';
 import { atualizarCidades } from './ibge-cidades.mjs';
+import { atualizarSeguranca } from './seguranca.mjs';
+import { atualizarIndices, herdarIndice } from './indice-gestao.mjs';
+import { atualizarEstaduais } from './estaduais.mjs';
 
 const DIAS_ENTRE_ATUALIZACOES_PESADAS = 7;
 // O GitHub corta a rotina em 180 minutos. A coleta dos anos de contas usa só o tempo que sobrar até este limite.
@@ -33,19 +36,7 @@ export function lerTrocasDeGestao() {
 }
 
 const idadeEmDias = (iso, hoje) => (iso ? (hoje - new Date(iso)) / 86400000 : Infinity);
-const media = (v) => (v.length ? arredondar(v.reduce((a, b) => a + b, 0) / v.length, 1) : null);
-
-function compacto(i) {
-  const o = { id: i.id, nome: i.nome, partido: i.partido, uf: i.uf, nota: i.nota, rank: i.rank };
-  if (i.municipio) o.municipio = i.municipio;
-  if (i.foto) o.foto = i.foto;
-  return o;
-}
-
-function destaques(itens, n = 10) {
-  const ordenados = itens.filter((i) => i.nota != null).sort((a, b) => a.rank - b.rank);
-  return { top: ordenados.slice(0, n).map(compacto), bottom: ordenados.slice(-n).reverse().map(compacto) };
-}
+const media = mediaDasNotas;
 
 /**
  * Compara a lista de votações de hoje com a de ontem. Se a Câmara corrigiu algo (resultado, placar,
@@ -68,13 +59,6 @@ export function registrarCorrecoes(antes, depois, hoje, anteriores = []) {
     if (mudou.length || votosMudados) novas.push({ em: hoje.toISOString(), votacao: v.id, titulo: v.titulo, mudancas: mudou, votosIndividuaisAlterados: votosMudados });
   }
   return [...novas, ...anteriores].slice(0, 300);
-}
-
-/** Quem tomou posse depois do fim do ano das contas não pode ser avaliado por elas. */
-function semContasDoMandato(inicio, exercicio) {
-  return exercicio != null && exercicio < inicio
-    ? { nota: null, comp: [], motivo: `O mandato começou em ${inicio}; o último ano fechado no Tesouro Nacional é ${exercicio}, então ainda não há relatórios fiscais desta administração.` }
-    : null;
 }
 
 /** O Tesouro só tem o ano fechado: em janeiro e fevereiro muita prefeitura ainda não entregou o do ano anterior. */
@@ -161,7 +145,11 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
       eleitos = await gerarEleitos({ baixarZip, anos, hoje });
       for (const w of eleitos.avisos) log('TSE aviso: ' + w);
       for (const uf of UFS) {
-        if (eleitos.estaduais[uf]) gravarJson(arquivo(`estaduais-${uf}.json`), { uf, ano: anos.estaduais, itens: eleitos.estaduais[uf] });
+        if (eleitos.estaduais[uf]) {
+          // A nota (calculada todo dia, mais adiante) é preservada até ser recalculada.
+          const antes = new Map((lerJsonSeExistir(arquivo(`estaduais-${uf}.json`))?.itens || []).map((x) => [x.id, x]));
+          gravarJson(arquivo(`estaduais-${uf}.json`), { uf, ano: anos.estaduais, itens: eleitos.estaduais[uf].map((x) => herdarIndice(x, antes.get(x.id))) });
+        }
       }
       const contar = (o) => Object.values(o).reduce((a, l) => a + l.length, 0);
       meta.fontes.tse = { ok: true, atualizadoEm: hoje.toISOString(), eleicoes: anos, avisos: eleitos.avisos.length };
@@ -221,6 +209,10 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
       // Se o Tesouro falhou e já existe resultado anterior, mantém o anterior (não apaga as notas).
       const manterAnterior = !contas && existsSync(arquivo('ranking-prefeitos.json'));
       if (!manterAnterior) {
+        // A rotina semanal refaz as listas; a nota (calculada todo dia, mais adiante) é preservada até ser recalculada.
+        const indiceAnterior = new Map();
+        for (const uf of UFS) for (const x of lerJsonSeExistir(arquivo(`prefeitos-${uf}.json`))?.itens || []) indiceAnterior.set(x.id, x);
+        for (const x of lerJsonSeExistir(arquivo('governadores.json'))?.itens || []) indiceAnterior.set(x.id, x);
         const todosPref = [];
         for (const uf of UFS) {
           for (const p of eleitos.prefeitos[uf] || []) {
@@ -229,11 +221,12 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
             if (ente && contas) {
               p.ibge = ente.cod_ibge;
               p.populacao = ente.populacao;
-              Object.assign(p, semContasDoMandato(eleitos.anos.municipal + 1, meta.fontes.siconfi.exercicio)
-                || notaExecutivo(contas[ente.cod_ibge], 'M', meta.fontes.siconfi.exercicio));
+              // As contas do Tesouro (gasto com pessoal, dívida) ficam só como informação; a nota vem do índice de serviços públicos.
+              Object.assign(p, notaExecutivo(contas[ente.cod_ibge], 'M'));
             } else {
               Object.assign(p, { nota: null, comp: [], motivo: contas ? 'Município não encontrado na base do Tesouro Nacional.' : 'As contas ainda não foram consultadas.' });
             }
+            herdarIndice(p, indiceAnterior.get(p.id));
             todosPref.push(p);
           }
         }
@@ -249,8 +242,9 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
         for (const g of eleitos.governadores) {
           const ente = g._ente;
           delete g._ente;
-          if (ente && contas) Object.assign(g, semContasDoMandato(eleitos.anos.governadores + 1, exerc) || notaExecutivo(contas[ente.cod_ibge], ente.esfera, exerc), { ibge: ente.cod_ibge, populacao: ente.populacao });
+          if (ente && contas) Object.assign(g, notaExecutivo(contas[ente.cod_ibge], ente.esfera), { ibge: ente.cod_ibge, populacao: ente.populacao });
           else Object.assign(g, { nota: null, comp: [], motivo: 'As contas do estado ainda não foram consultadas.' });
+          herdarIndice(g, indiceAnterior.get(g.id));
         }
         const gComNota = atribuirPosicoes(eleitos.governadores);
         gravarJson(arquivo('governadores.json'), { ano: eleitos.anos.governadores, exercicio: exerc, total: eleitos.governadores.length, comNota: gComNota, itens: eleitos.governadores });
@@ -284,12 +278,31 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
     // Resultados do IBGE Cidades (Ideb, matrículas, mortalidade infantil, diarreia): cada município é relido a cada 7 dias,
     // e a coleta continua no dia seguinte de onde parou. Usa no máximo 12 minutos por rodada.
     await passo('cidades', 'IBGE Cidades', () => atualizarCidades({ json: fontes.json, pasta: saida, hoje, orcamentoMs: 12 * 60000, log }));
+    // Segurança pública por estado (Sinesp): semanal. Se falhar, a área de segurança fica "sem dado" no índice.
+    if (fontes.binario && velha('seguranca')) await passo('seguranca', 'Segurança (Sinesp)', () => atualizarSeguranca({ json: fontes.json, binario: fontes.binario, pasta: saida, hoje, log }));
     const exercicio = exercicioDoTesouro(hoje);
     const sobra = Math.min(orcamentoSeriesMs, limiteTotalMs - (Date.now() - inicioDaRotina));
     const prefill = contasDoExercicio ? { [exercicio]: Object.fromEntries(Object.entries(contasDoExercicio).map(([k, c]) => [k, c.erro ? { erro: c.erro } : { rgf: c.rgf, pessoal: c.pessoal, divida: c.divida }])) } : {};
     await passo('series', 'Séries por ano', async () => {
       const r = await atualizarExecutivos({ json: fontes.json, pasta: saida, hoje, exercicio, orcamentoMs: sobra, prefill, log });
       return { ok: !r.erro, ...r };
+    });
+    // Índice de serviços públicos (saúde, educação, segurança, infraestrutura e saneamento): recalculado todo dia.
+    await passo('indice', 'Índice de serviços públicos', async () => {
+      const r = await atualizarIndices({ pasta: saida, hoje, log });
+      if (r.ok) {
+        dest.prefeitos = r.prefeitos.destaques;
+        dest.governadores = r.governadores.destaques;
+        meta.cargos.prefeitos = { total: r.prefeitos.total, comNota: r.prefeitos.comNota, media: r.prefeitos.media };
+        meta.cargos.governadores = { total: r.governadores.total, comNota: r.governadores.comNota, media: r.governadores.media };
+      }
+      return r.ok ? { ok: true, ...r.cobertura } : r;
+    });
+    // Deputados estaduais: lê as Assembleias que têm leitor (hoje, a de São Paulo) e calcula o índice parcial; as demais ficam sem índice, com o motivo.
+    await passo('estaduais', 'Deputados estaduais', async () => {
+      const r = await atualizarEstaduais({ binario: fontes.binario, pasta: saida, hoje, log });
+      if (r.total != null) meta.cargos.estaduais = { total: r.total, comNota: r.comNota, media: r.media };
+      return r;
     });
   }
 

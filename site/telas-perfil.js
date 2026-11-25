@@ -57,36 +57,52 @@ function seletorAno(rotulo = 'Ano') {
     <select id="ano">${Array.from({ length: ANO_ATUAL - PRIMEIRO_ANO + 1 }, (_, i) => ANO_ATUAL - i).map(a => html`<option value="${a}" ${a === estado.ano ? 'selected' : ''}>${a}</option>`)}</select></label>`;
 }
 
-/* Lista dos critérios do índice, com a barra, o peso e a frase que explica o número. */
+/* Lista dos critérios do índice, com a barra, o peso e a frase que explica o número.
+   grupo: 'federais' | 'executivos' (governadores e prefeitos) | 'estaduais' | 'presidente'. */
+const UNIDADE_INDICE = { federais: 'critérios', estaduais: 'critérios', executivos: 'áreas', presidente: 'indicadores' };
+const TEXTO_INDICE = {
+  federais: 'O índice compara o que o deputado fez nos últimos 4 anos com as regras do método: uso da cota parlamentar, votações nominais, presença no plenário e projetos aprovados. Projetos aprovados conta a autoria de proposições que viraram lei ou foram aprovadas, medidas nos dados da Câmara; mede resultado legislativo, não a qualidade do mandato nem o mérito das leis. Quem assumiu depois é avaliado só desde a primeira presença, e licenças e afastamentos registrados pela Câmara não contam contra o deputado.',
+  executivos: 'O índice de serviços públicos compara o município ou o estado com os pares em resultados de saúde, educação, segurança, infraestrutura e saneamento, cada área com 20% do total. Quando uma área não tem dado confiável, ela fica de fora e o índice é calculado com as demais, sempre mostrando de quantas áreas ele é feito. Gasto com pessoal e dívida seguem nas abas, só como informação.',
+  executivosAtribuicao: ' Resultados de serviços públicos dependem de vários níveis de governo, de anos anteriores e de fatores que o gestor não controla: o índice não prova mérito nem culpa de quem governa.',
+  estaduais: 'O índice parcial usa só o que a Assembleia publica e o Placar consegue ler, e compara o deputado apenas com os colegas da mesma Assembleia. Os critérios sem dado ficam fora, e o índice mostra de quantos critérios é feito.',
+  presidente: 'O índice econômico resume três séries nacionais (inflação, desemprego e dívida pública) durante o governo em exercício. Os resultados da economia dependem de muitos fatores, internos e externos, e não podem ser atribuídos só ao presidente. Não mede saúde, educação, segurança, obras nem as demais áreas do governo federal.'
+};
+
 function cartaoIndice(item, grupo) {
   const defs = ((DADOS.metodo && DADOS.metodo[grupo] && DADOS.metodo[grupo].componentes) || []);
   const comp = item.comp || [];
   const porK = new Map(comp.map(c => [c.k, c]));
   const linhas = defs.length ? defs : comp.map(c => ({ k: c.k, rotulo: c.k, peso: null }));
+  const un = UNIDADE_INDICE[grupo] || 'critérios';
+  const parcial = item.parcial;
+  const rotuloSelo = parcial || grupo === 'executivos' ? 'Índice parcial' : '';
+  const titulo = html`Como o ${nomeIndice(grupo)} é formado ${selo('indice', '', rotuloSelo)}`;
   if (!comp.length) {
-    return html`<section class="cartao"><h2 class="painel-titulo">Como o ${nomeIndice(grupo)} é formado ${selo('indice', '', grupo === 'federais' ? '' : 'Índice fiscal do Placar')}</h2>
+    return html`<section class="cartao"><h2 class="painel-titulo">${titulo}</h2>
       <p class="painel-sub">${item.motivo || 'Não há dados suficientes para mostrar os critérios.'}</p>
       <p class="nota" style="margin-top:0">Veja em <a href="#/metodologia">Metodologia</a> quais critérios entram no índice.</p></section>`;
   }
-  const faltam = linhas.some(d => !porK.has(d.k) || porK.get(d.k).s == null);
+  const faltam = linhas.some(d => { const c = porK.get(d.k); return !c || c.s == null; });
+  const contagem = parcial && parcial.usadas != null && parcial.total
+    ? html`<p class="painel-sub"><strong>Índice parcial:</strong> feito com ${parcial.usadas} de ${parcial.total} ${un}.${parcial.escopo ? ` Escopo: ${parcial.escopo}.` : ''}${item.nota == null || parcial.usadas === parcial.total ? '' : ' Os pesos abaixo são redistribuídos entre os que têm dado.'}</p>`
+    : html`<p class="painel-sub">Cada ${un === 'áreas' ? 'área' : un === 'indicadores' ? 'indicador' : 'critério'} vai de 0 a 100. O índice é a média ponderada deles, com os pesos abaixo. É uma regra do Placar Público, não um dado oficial.</p>`;
   return html`<section class="cartao">
-    <h2 class="painel-titulo">Como o ${nomeIndice(grupo)} é formado ${selo('indice', '', grupo === 'federais' ? '' : 'Índice fiscal do Placar')}</h2>
-    <p class="painel-sub">Cada critério vai de 0 a 100. O ${nomeIndice(grupo)} é a média deles, com os pesos abaixo. Ele é uma regra do Placar Público, não um dado oficial.</p>
+    <h2 class="painel-titulo">${titulo}</h2>
+    ${contagem}
     <ul class="comp-lista">${linhas.map(d => {
       const c = porK.get(d.k);
       const s = c ? c.s : null;
+      const rotuloSem = c && c.na ? 'não se aplica' : c && c.sem ? 'sem fonte' : 'sem dado';
       return html`<li class="comp ${s == null ? 'sem' : ''}">
         <span class="comp-nome">${d.rotulo}${d.peso != null ? html`<span class="comp-peso">peso ${d.peso}%</span>` : ''}</span>
-        <span class="comp-nota">${s == null ? 'sem dado' : fmtNota(s)}</span>
-        <span class="comp-barra" role="img" aria-label="${s == null ? 'sem dado' : fmtNota(s) + ' de 100'}"><span style="width:${s == null ? 0 : Math.max(0, Math.min(100, s))}%"></span></span>
+        <span class="comp-nota">${s == null ? rotuloSem : fmtNota(s)}</span>
+        <span class="comp-barra" role="img" aria-label="${s == null ? rotuloSem : fmtNota(s) + ' de 100'}"><span style="width:${s == null ? 0 : Math.max(0, Math.min(100, s))}%"></span></span>
         <span class="comp-fato">${c && c.f ? c.f : MSG_INDISPONIVEL}</span>
       </li>`;
     })}</ul>
-    ${faltam ? html`<p class="nota">Quando um critério não tem dado, o índice usa só os que existem, mantendo os pesos proporcionais.</p>` : ''}
-    <p class="nota">${grupo === 'federais'
-      ? 'O índice compara o que o deputado fez nos últimos 4 anos com as regras do método. Mede quantidade e cumprimento de deveres, não a qualidade do mandato nem se os projetos foram aprovados. Quem assumiu depois é avaliado só desde a primeira presença, e licenças e afastamentos registrados pela Câmara não contam contra o deputado.'
-      : 'O índice olha só gasto com pessoal e dívida do último ano fechado, que pertencem à administração daquele ano. Não mede saúde, educação, obras ou serviços, e não aponta irregularidade. Os demais indicadores estão nas abas, como informação, sem nota automática.'}
-      <a href="#/metodologia">Como é calculado</a>.</p>
+    ${faltam ? html`<p class="nota">Quando um critério não tem dado, o índice usa só os que existem, mantendo os pesos proporcionais. Ausência de dado não é nota baixa.</p>` : ''}
+    ${item.ressalva ? html`<p class="nota"><strong>Leia com cuidado:</strong> ${item.ressalva}</p>` : ''}
+    <p class="nota">${TEXTO_INDICE[grupo] || ''}${grupo === 'executivos' && !item.ressalva ? TEXTO_INDICE.executivosAtribuicao : ''} <a href="#/metodologia">Como é calculado</a>.</p>
   </section>`;
 }
 
@@ -261,7 +277,7 @@ function painelVisaoFederal(el, ctx) {
     <div class="tiles">
       ${tile({ icone: 'pessoas', cor: 'verde', rotulo: 'Presença', valor: comp.pres ? dec(comp.pres.s) + '%' : '—', legenda: `${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${dataBR(item.desde)}${e.licenca && e.licenca.sessoes ? `, sem contar ${e.licenca.sessoes} em licença` : ''}`, origem: 'calculado', natureza: 'proporcional' })}
       ${tile({ icone: 'urna', cor: 'azul', rotulo: 'Votações nominais', valor: `${e.votos[0]} de ${e.votos[1]}`, legenda: `votações do Plenário em que registrou voto desde ${dataBR(item.desde)}`, origem: 'calculado', natureza: 'proporcional', href: `#/federais/${id}/votos` })}
-      ${tile({ icone: 'arquivo', cor: 'laranja', rotulo: 'Projetos', valor: fmtNum.format(e.projetos), legenda: `projetos e propostas apresentados desde ${dataBR(item.desde)}, como autor ou coautor`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/projetos` })}
+      ${tile({ icone: 'arquivo', cor: 'laranja', rotulo: 'Projetos', valor: fmtNum.format(e.projetos), legenda: `projetos e propostas apresentados desde ${dataBR(item.desde)}, como autor ou coautor${e.proj && e.proj.situacaoLida ? ` · ${fmtNum.format(e.proj.aprovadosCasa)} aprovados pela Câmara, ${fmtNum.format(e.proj.leis)} viraram lei` : ''}`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/projetos` })}
       ${tile({ icone: 'moedas', cor: 'roxo', rotulo: 'Cota parlamentar', valor: reaisCurto(e.gasto), legenda: `gasto desde ${dataBR(item.desde)} (${fmtBRL.format(e.gasto)}, valor dos documentos menos glosas)`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/gastos` })}
     </div>` : html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Destaques do mandato</h2>
       <p class="painel-sub">${item.motivo || MSG_INDISPONIVEL}</p></section>`}
@@ -400,7 +416,7 @@ function painelHistorico(el, ctx) {
 
 async function painelProjetos(el, ctx, vale) {
   const { hist, id, demo } = ctx;
-  if (demo) return mostrar(el, html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Projetos</h2>${indisponivel('No modo demonstração a consulta à Câmara fica desligada.')}</section>`);
+  if (demo) return mostrar(el, html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Projetos</h2>${indisponivel('No modo demonstração a consulta à Câmara fica desligada.')}</section>${cartaoAprovados(ctx.item)}`);
 
   mostrar(el, html`
     <section class="cartao" style="margin-top:0">
@@ -408,10 +424,7 @@ async function painelProjetos(el, ctx, vale) {
       <p class="painel-sub">Projetos e propostas (PL, PLP, PEC, PDL, PRC, MPV e semelhantes) em que o deputado consta como autor ou coautor, por ano. Não inclui requerimentos, emendas nem pareceres.</p>
       <div id="p-graf">${esqueletoLinhas(2)}</div>
     </section>
-    <section class="cartao">
-      <h2 class="painel-titulo">Projetos aprovados e transformados em lei</h2>
-      ${indisponivel('A API da Câmara não permite contar, de forma confiável, quantos projetos de cada deputado foram aprovados ou viraram lei. Por isso o Placar Público não mostra esse número, em vez de arriscar um valor errado.')}
-    </section>
+    ${cartaoAprovados(ctx.item)}
     <section class="cartao">
       ${seletorAno('Ano da lista')}
       <div id="p-lista">${esqueletoLinhas(4)}</div>
@@ -448,6 +461,37 @@ async function painelProjetos(el, ctx, vale) {
     console.error(e);
     if (vale()) mostrarErro($('#p-lista'), 'Não foi possível carregar a lista de proposições.', () => perfilAtual.redesenhar());
   }
+}
+
+/* Projetos de autoria do deputado por situação atual, contados nos arquivos abertos da Câmara (últimos 4 anos ou desde a primeira presença). */
+function cartaoAprovados(item) {
+  const p = item && item.extra && item.extra.proj;
+  const peso = (((DADOS.metodo || {}).federais || {}).componentes || []).find(c => c.k === 'aprov');
+  const titulo = html`<h2 class="painel-titulo">Projetos aprovados e transformados em lei ${selo('calculado', 'quantitativo')}</h2>`;
+  if (!p) {
+    return html`<section class="cartao">${titulo}${indisponivel('Os números de projetos por situação ainda não foram gerados para este deputado. Eles aparecem depois da próxima atualização diária.')}</section>`;
+  }
+  if (!p.situacaoLida) {
+    return html`<section class="cartao">${titulo}${indisponivel('O arquivo de proposições da Câmara não trouxe a situação dos projetos neste período. Sem a situação, o Placar não classifica nenhum projeto como aprovado ou não aprovado, e o critério fica sem dado.')}</section>`;
+  }
+  const n = v => fmtNum.format(v);
+  return html`<section class="cartao">${titulo}
+    <p class="painel-sub">Projetos e propostas (PL, PLP, PEC, PDL, PRC, MPV e semelhantes) de autoria ou coautoria do deputado, contados pela <strong>situação atual</strong> registrada pela Câmara. “Aprovado” aqui significa aprovado pela Câmara (seguiu ao Senado ou à sanção) ou já transformado em norma jurídica.</p>
+    <div class="numeros">
+      <div class="numero"><span>Aprovados pela Câmara</span><strong>${n(p.aprovadosCasa)}</strong><small>de ${n(p.apresentados)} apresentados no período</small></div>
+      <div class="numero"><span>Viraram lei</span><strong>${n(p.leis)}</strong><small>transformados em norma jurídica</small></div>
+      <div class="numero"><span>Aprovados por ano de exercício</span><strong>${p.aprovadosPorAno != null && p.historicoSuficiente ? dec(p.aprovadosPorAno, 2) : '—'}</strong><small>${p.historicoSuficiente ? 'entra na nota (30%)' : 'menos de 12 meses de exercício: sem dado para a nota'}</small></div>
+    </div>
+    <ul class="pontos" style="list-style:none;padding:0;margin-top:10px">
+      <li>Em tramitação: <strong>${n(p.tramitacao)}</strong></li>
+      <li>Aguardando recurso ou decisão em comissão: <strong>${n(p.comissao)}</strong></li>
+      <li>Arquivados, rejeitados, retirados ou prejudicados: <strong>${n(p.arquivados)}</strong></li>
+      ${p.outros ? html`<li>Transformados em nova proposição: <strong>${n(p.outros)}</strong></li>` : ''}
+      ${p.semSituacao ? html`<li>Sem situação informada: <strong>${n(p.semSituacao)}</strong></li>` : ''}
+      <li>Sozinho(a): <strong>${n(p.sozinho)}</strong> · em coautoria: <strong>${n(p.coautoria)}</strong></li>
+    </ul>
+    <p class="nota">Limites: o Placar usa só a situação mais recente de cada projeto; um projeto recente ainda pode ser aprovado. Aprovação depende de acordos, da pauta e do partido, e não mede a qualidade da lei. ${peso ? `Este critério vale ${peso.peso}% do índice, comparado entre todos os deputados em exercício.` : ''} <a href="#/metodologia">Como é calculado</a>.</p>
+  </section>`;
 }
 
 /* ---------- Como votou? ---------- */
@@ -714,7 +758,7 @@ function fichaCartao(item) {
 }
 
 /* =====================================================================
-   Deputado estadual (sem índice)
+   Deputado estadual: índice parcial onde a Assembleia publica dados
    ===================================================================== */
 
 async function viewEleito(cargo, uf, id, token) {
@@ -735,11 +779,14 @@ async function viewEleito(cargo, uf, id, token) {
 
   mostrar(app, html`
     <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
-    ${heroPerfil({ item, cargoTxt: `${c.singular} · ${lugar}`, meta: `${item.partido || 'Sem partido'}${item.urna && item.urna !== item.nome ? ' · nome de urna: ' + item.urna : ''}`, selos: [html`<span class="distintivo">${item.situacao || 'Eleito(a)'} em ${dado.ano}</span>`], anelNota: false })}
-    <section class="cartao">
+    ${heroPerfil({ item, cargoTxt: `${c.singular} · ${lugar}`, meta: `${item.partido || 'Sem partido'}${item.urna && item.urna !== item.nome ? ' · nome de urna: ' + item.urna : ''}`, selos: [html`<span class="distintivo">${item.situacao || 'Eleito(a)'} em ${dado.ano}</span>`, item.nota != null ? html`<span class="distintivo distintivo-neutro">Índice parcial: ${item.parcial ? `${item.parcial.usadas} de ${item.parcial.total} critérios` : 'dados da Assembleia'}${item.rank != null ? ` · ${fmtNum.format(item.rank)}º na Assembleia` : ''}</span>` : html`<span class="distintivo distintivo-neutro">Sem índice por enquanto</span>`], anelNota: item.nota != null })}
+    ${item.nota != null ? cartaoIndice(item, 'estaduais') : html`<section class="cartao">
       <h2 class="painel-titulo">Sem índice por enquanto</h2>
-      <p class="painel-sub" style="margin:0">${POR_QUE_SEM_NOTA[cargo]}</p>
-    </section>
+      <p class="painel-sub" style="margin:0">${item.motivo || 'A Assembleia deste estado ainda não tem leitura integrada ao Placar.'}</p>
+      <p class="nota">O Placar só calcula índice com dados que consegue ler de fonte oficial e comparar de forma justa entre os colegas da mesma Assembleia. Ausência de dado não é nota baixa. <a href="#/fontes">Situação de cada Assembleia</a>.</p>
+    </section>`}
+    ${item.nota != null && item.fonteDados ? html`<section class="cartao"><h2 class="painel-titulo">De onde vêm os dados do índice ${selo('oficial')}</h2>
+      <p class="painel-sub" style="margin:0">Despesas de gabinete publicadas em dados abertos pela ${item.fonteDados}. O Placar só soma valores por mês e compara com os colegas da mesma Assembleia; não lê nem guarda dados pessoais de fornecedores. <a href="#/fontes">Fontes</a></p></section>` : ''}
     ${fichaCartao(item)}
     ${avisoEleitos(dado.ano)}`);
 }

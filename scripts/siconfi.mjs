@@ -5,7 +5,7 @@
 //   - quantos relatórios fiscais obrigatórios foram entregues (extrato de entregas)
 
 import { normalizar, emLotes, esperar, arredondar, limitar } from './util.mjs';
-import { METODO, mediaPonderada, pesoDe, scorePessoal, scoreDivida, scoreEntregas } from './nota.mjs';
+import { METODO } from './nota.mjs';
 
 export const BASE = 'https://apidatalake.tesouro.gov.br/ords/siconfi/tt';
 
@@ -173,28 +173,19 @@ export async function gerarContas({ json, entes, exercicio, paralelo = 6, aoAnda
   return contas;
 }
 
-/** Transforma as contas em nota e frases explicativas. */
-export function notaExecutivo(contas, esfera, exercicio) {
-  if (!contas || contas.erro) return { nota: null, comp: [], motivo: 'Não foi possível consultar as contas no Tesouro Nacional.' };
+/**
+ * Organiza as contas fiscais de um ente (gasto com pessoal, dívida e relatórios entregues) para o perfil.
+ * Elas NÃO entram mais na nota: o Índice de serviços públicos é calculado depois, em indice-gestao.mjs,
+ * com os resultados de saúde, educação, segurança e saneamento. Aqui a nota fica vazia até lá.
+ */
+export function notaExecutivo(contas, esfera) {
+  if (!contas || contas.erro) return { nota: null, comp: [], motivo: 'Não foi possível consultar as contas no Tesouro Nacional. O índice de serviços públicos não depende delas, e é calculado à parte.' };
   const lim = METODO.executivos.limites[esfera];
-  const comp = [];
   const e = contas.entregas;
-  if (contas.pessoal != null) {
-    comp.push({ k: 'pessoal', s: scorePessoal(contas.pessoal, lim.pessoal),
-      f: `Gastou ${contas.pessoal.toLocaleString('pt-BR')}% da receita corrente líquida com pessoal em ${exercicio}. O limite da Lei de Responsabilidade Fiscal é ${lim.pessoal}%.` });
-  }
-  if (contas.divida != null) {
-    comp.push({ k: 'divida', s: scoreDivida(contas.divida, lim.divida),
-      f: `Dívida consolidada líquida de ${contas.divida.toLocaleString('pt-BR')}% da receita corrente líquida. O limite é ${lim.divida}%.` });
-  }
-  // Os relatórios entregues não entram na nota: ficam só como informação, na aba Prestação de contas.
   const contasPublicas = {
     pessoal: contas.pessoal ?? null, divida: contas.divida ?? null,
     limitePessoal: lim.pessoal, limiteDivida: lim.divida, rgf: contas.rgf ?? null,
     entregas: e && e.esperado ? { feitas: e.feitas, esperado: e.esperado, rreo: e.rreo, rgf: e.rgf, dca: e.dca } : null
   };
-  const nota = mediaPonderada(comp.map((c) => ({ peso: pesoDe('executivos', c.k), s: c.s })), METODO.executivos.minComponentes);
-  return nota == null
-    ? { nota: null, comp, contas: contasPublicas, motivo: `O Tesouro Nacional não tem os relatórios fiscais de ${exercicio} desta administração.` }
-    : { nota, comp, contas: contasPublicas };
+  return { nota: null, comp: [], contas: contasPublicas, motivo: 'O índice de serviços públicos ainda não foi calculado para este ente.' };
 }

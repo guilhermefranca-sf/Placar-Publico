@@ -3,8 +3,8 @@
 /* =====================================================================
    Placar Público — Início
    Menus, faixas de aviso, escolha do cargo, destaques e lista de pessoas
-   com o anel do índice. Deputados estaduais (sem índice) mostram a
-   lista oficial de eleitos.
+   com o anel do índice. Deputados estaduais: lista por estado, com índice
+   parcial onde a Assembleia publica dados e o motivo onde não publica.
    ===================================================================== */
 
 /* ---------- Menus (topo no computador, embaixo no celular) ---------- */
@@ -131,8 +131,8 @@ async function viewCargo(cargo, token, inicio) {
   }
   if (token !== rotaToken) return;
 
-  if (c.nota) montarCargoComNota(cargo, dados);
-  else montarCargoSemNota(cargo, token);
+  if (cargo === 'estaduais') montarEstaduais(cargo, token);
+  else montarCargoComNota(cargo, dados);
 }
 
 // A busca do topo leva para a lista do cargo escolhido, filtrando pelo que foi digitado.
@@ -150,10 +150,10 @@ function resumoCargo(cargo, dados) {
   const total = dados.total ?? m.total;
   const comNota = dados.comNota ?? m.comNota;
   const dia = fonte && fonte.atualizadoEm ? new Date(fonte.atualizadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—';
-  const base = cargo === 'federais' ? `Câmara, ${periodoAvaliado(dados, true)}` : `Tesouro, contas de ${dados.exercicio ?? '—'}`;
+  const base = cargo === 'federais' ? `Câmara, ${periodoAvaliado(dados, true)}` : `Indicadores públicos dos últimos 48 meses`;
   return html`<section class="resumo" aria-label="Resumo">
     <div class="resumo-item"><span>${cargo === 'federais' ? 'Em exercício' : 'Eleitos'}</span><strong>${fmtNum.format(total)}</strong><small>${total - comNota ? `${fmtNum.format(comNota)} com índice` : 'todos com índice'}</small></div>
-    <div class="resumo-item"><span>${cargo === 'federais' ? 'Índice médio' : 'Índice fiscal médio'}</span><strong>${fmtNota(m.media)}</strong><small>${cargo === 'federais' ? 'de 0 a 100' : 'índice de responsabilidade fiscal, de 0 a 100'}</small></div>
+    <div class="resumo-item"><span>${cargo === 'federais' ? 'Índice médio' : 'Índice de serviços públicos médio'}</span><strong>${fmtNota(m.media)}</strong><small>${cargo === 'federais' ? 'de 0 a 100' : 'parcial, de 0 a 100 (média de quem tem índice)'}</small></div>
     <div class="resumo-item"><span>Atualizado em</span><strong>${dia}</strong><small>${base}</small></div>
   </section>`;
 }
@@ -174,8 +174,8 @@ function montarCargoComNota(cargo, dados) {
       <div class="destaques-topo">
         <h2>Destaques</h2>
         <div class="seg" role="group" aria-label="Escolha o grupo">
-          <button type="button" data-lado="top" aria-pressed="${lado.v === 'top'}">${cargo === 'federais' ? 'Maiores índices' : 'Maiores índices fiscais'}</button>
-          <button type="button" data-lado="fundo" aria-pressed="${lado.v === 'fundo'}">${cargo === 'federais' ? 'Menores índices' : 'Menores índices fiscais'}</button>
+          <button type="button" data-lado="top" aria-pressed="${lado.v === 'top'}">Maiores índices</button>
+          <button type="button" data-lado="fundo" aria-pressed="${lado.v === 'fundo'}">Menores índices</button>
         </div>
       </div>
       <ul class="destaques" id="dest-lista"></ul>
@@ -201,7 +201,7 @@ function montarCargoComNota(cargo, dados) {
       <div class="mais-linha" id="r-mais"></div>
       <p class="nota">${c.singular === 'Deputado federal'
         ? 'Quem aparece sem índice não tem dados suficientes no período avaliado (por exemplo, assumiu o mandato há poucas semanas). Abra o perfil para ver o motivo.'
-        : 'Quem aparece sem índice não tem relatórios fiscais do último ano fechado no Tesouro Nacional, ou o município não foi encontrado na base. Abra o perfil para ver o motivo.'}
+        : 'Quem aparece sem índice não tem dados suficientes das áreas avaliadas (os dados do IBGE chegam aos poucos), ou o mandato atual começou há pouco e ainda não há dado dele. Abra o perfil para ver o motivo exato. Quem tem índice parcial mostra, no perfil, de quantas das cinco áreas ele é feito.'}
         A lista de eleitos vem do TSE e não registra substituições depois da eleição. <a href="#/metodologia">Como o ${nomeIndice(cargo)} é calculado</a>.</p>
     </section>`);
 
@@ -251,18 +251,15 @@ function montarCargoComNota(cargo, dados) {
   desenhar();
 }
 
-/* ---------- Cargos sem índice: lista oficial de eleitos ---------- */
+/* ---------- Deputados estaduais: lista por estado, com índice parcial onde a Assembleia publica dados ---------- */
 
-const POR_QUE_SEM_NOTA = {
-  estaduais: 'Ainda não existe uma fonte única e padronizada com presença, votos e projetos dos parlamentos dos 27 estados. Cada assembleia publica seus dados de um jeito, e algumas quase não publicam. Um índice só é justo se o critério for o mesmo para todos, então por enquanto o Placar Público mostra apenas a lista oficial de eleitos.'
-};
-
-async function montarCargoSemNota(cargo, token) {
+async function montarEstaduais(cargo, token) {
   const c = CARGOS[cargo];
+  const meta = (DADOS.meta && DADOS.meta.cargos && DADOS.meta.cargos.estaduais) || {};
   mostrar(app, html`${cabecalhoInicio(cargo)}
-    <section class="cartao" aria-label="Por que ainda não há índice">
-      <h2>${c.rotulo}: lista oficial <span class="em-breve">sem índice por enquanto</span></h2>
-      <p class="painel-sub" style="margin:8px 0 0">${POR_QUE_SEM_NOTA[cargo]}</p>
+    <section class="cartao" aria-label="Como funciona o índice dos deputados estaduais">
+      <h2>${c.rotulo}: índice parcial <span class="em-breve">depende de cada Assembleia</span></h2>
+      <p class="painel-sub" style="margin:8px 0 0">${c.lead} O deputado é comparado só com os colegas da <strong>mesma Assembleia</strong>, e a posição também é só dentro dela. ${meta.comNota != null ? html`Hoje ${fmtNum.format(meta.comNota)} de ${fmtNum.format(meta.total)} têm índice.` : ''} <a href="#/metodologia">Como é calculado</a> · <a href="#/fontes">Situação de cada Assembleia</a></p>
     </section>
     <section class="secao" aria-label="Lista de eleitos">
       <div class="filtros filtros-auto">
@@ -270,20 +267,29 @@ async function montarCargoSemNota(cargo, token) {
           <select id="s-uf">${UFS.map(u => html`<option value="${u}" ${u === estado.uf ? 'selected' : ''}>${u} · ${NOMES_UF[u]}</option>`)}</select></label>
         <label class="campo"><span>Nome</span><input id="s-busca" type="search" placeholder="Digite parte do nome" autocomplete="off"></label>
         <label class="campo"><span>Partido</span><select id="s-partido"><option value="">Todos</option></select></label>
+        <label class="campo"><span>Ordem</span>
+          <select id="s-ordem"><option value="maior">Maior índice primeiro</option><option value="menor">Menor índice primeiro</option><option value="nome">Nome (A a Z)</option></select></label>
       </div>
       <p class="contagem" id="s-contagem" aria-live="polite" style="margin-top:12px"></p>
+      <div id="s-aviso"></div>
       <div id="s-corpo">${esqueletoLinhas(4)}</div>
       <div class="mais-linha" id="s-mais"></div>
       <p class="nota" id="s-nota"></p>
     </section>`);
   $('#busca-topo').closest('label').hidden = true;
 
-  const vista = { uf: estado.uf, busca: '', partido: '', limite: 60, dado: null };
+  const vista = { uf: estado.uf, busca: '', partido: '', ordem: 'maior', limite: 60, dado: null };
   const vivo = () => token === rotaToken;
+  const ORDENS = {
+    maior: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || cmpNome(a, b),
+    menor: (a, b) => ((a.nota == null) - (b.nota == null)) || (b.rank ?? 0) - (a.rank ?? 0) || cmpNome(a, b),
+    nome: cmpNome
+  };
 
   async function carregarUf() {
     mostrar($('#s-corpo'), esqueletoLinhas(4));
     $('#s-contagem').textContent = '';
+    mostrar($('#s-aviso'), html``);
     try {
       vista.dado = await lerArquivo(`${cargo}-${vista.uf}.json`);
     } catch (e) {
@@ -297,6 +303,11 @@ async function montarCargoSemNota(cargo, token) {
     const partidos = [...new Set(itens.map(i => i.partido).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     mostrar($('#s-partido'), html`<option value="">Todos</option>${partidos.map(p => html`<option value="${p}">${p}</option>`)}`);
     vista.partido = '';
+    const comNota = itens.filter(i => i.nota != null).length;
+    const motivo = (itens.find(i => i.nota == null && i.motivo) || {}).motivo;
+    mostrar($('#s-aviso'), comNota
+      ? html`<p class="nota">${selo('indice', '', 'Índice parcial')} ${fmtNum.format(comNota)} de ${fmtNum.format(itens.length)} deputados desta Assembleia têm índice. É parcial: usa só o que a Assembleia publica e o Placar consegue ler (abra o perfil para ver o que entrou).</p>`
+      : html`<p class="nota">Nenhum deputado desta Assembleia tem índice por enquanto. ${motivo || ''}</p>`);
     mostrar($('#s-nota'), html`${selo('oficial')} A lista vem do TSE e mostra quem foi eleito em ${vista.dado.ano}. Substituições depois da eleição (suplentes que assumiram, renúncias, cassações) não aparecem.`);
     desenhar();
   }
@@ -306,14 +317,15 @@ async function montarCargoSemNota(cargo, token) {
     const q = semAcento(vista.busca.trim());
     const lista = vista.dado.itens.filter(i =>
       (!vista.partido || i.partido === vista.partido) &&
-      (!q || semAcento(i.nome).includes(q) || semAcento(i.urna || '').includes(q)));
+      (!q || semAcento(i.nome).includes(q) || semAcento(i.urna || '').includes(q))).sort(ORDENS[vista.ordem]);
     const visiveis = lista.slice(0, vista.limite);
     $('#s-contagem').textContent = plural(lista.length, 'eleito', 'eleitos');
     mostrar($('#s-corpo'), visiveis.length ? html`<ul class="lista-pessoas">${visiveis.map(i => html`<li>
-        <a class="pessoa pessoa-sem" href="#/${cargo}/${i.uf}/${i.id}">
+        <a class="pessoa ${i.nota == null ? 'pessoa-sem' : ''}" href="#/${cargo}/${i.uf}/${i.id}">
           <span class="avatar" aria-hidden="true">${iniciais(i.nome)}</span>
           <span class="pessoa-info"><span class="pessoa-nome">${i.nome}</span>
-          <span class="pessoa-meta">${i.partido || 'Sem partido'}${i.municipio ? ' · ' + i.municipio : ''}</span></span>
+          <span class="pessoa-meta">${i.partido || 'Sem partido'}${i.nota != null && i.rank != null ? ` · ${fmtNum.format(i.rank)}º na Assembleia` : (i.nota == null ? ' · sem índice' : '')}</span></span>
+          ${i.nota != null ? anel(i.nota, { tam: 48, esp: 5 }) : ''}
           <span class="ico-seta">${icone('seta', 18)}</span>
         </a></li>`)}</ul>` : html`<p class="vazio">Ninguém encontrado com esses filtros.</p>`);
     mostrar($('#s-mais'), lista.length > vista.limite
@@ -323,6 +335,7 @@ async function montarCargoSemNota(cargo, token) {
   $('#s-uf').addEventListener('change', e => { vista.uf = e.target.value; estado.uf = vista.uf; salvarPref('uf', vista.uf); vista.limite = 60; carregarUf(); });
   $('#s-busca').addEventListener('input', e => { vista.busca = e.target.value; vista.limite = 60; desenhar(); });
   $('#s-partido').addEventListener('change', e => { vista.partido = e.target.value; vista.limite = 60; desenhar(); });
+  $('#s-ordem').addEventListener('change', e => { vista.ordem = e.target.value; vista.limite = 60; desenhar(); });
   $('#s-mais').addEventListener('click', e => { if (e.target.closest('[data-mais]')) { vista.limite += 120; desenhar(); } });
   $('#s-uf').value = vista.uf;
   carregarUf();

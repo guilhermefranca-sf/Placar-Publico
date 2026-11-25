@@ -756,10 +756,10 @@ function painelVisaoPresidente(el, ctx) {
       ${t('cifrao', 'verde', 'Dívida bruta do governo geral', 'pres.divida-bruta', 'Banco Central')}
     </div>
     ${tilesPrecosVisao(ctx.precos)}
-    <section class="cartao cartao-aviso">
-      <h3>Por que não há índice para o presidente</h3>
-      <p>O índice de 0 a 100 só existe quando há base completa de dados e regra clara. Para a Presidência, só economia e dívida estão integradas; saúde, educação, segurança, saneamento e obras federais ainda estão sem fonte confirmada, e muitos resultados dependem também de estados e municípios. O Placar prefere mostrar os dados por gestão a resumir tudo em uma nota.</p>
-    </section>`);
+    ${pres.indice ? cartaoIndice(pres.indice, 'presidente') : html`<section class="cartao cartao-aviso">
+      <h3>Índice econômico ainda não calculado</h3>
+      <p>O índice econômico do presidente aparece depois da próxima atualização diária. Ele resume inflação, desemprego e dívida pública da gestão em exercício, sem atribuir à pessoa o que depende de muitos outros fatores.</p>
+    </section>`}`);
 }
 
 async function viewPresidente(abaInicial, token) {
@@ -770,9 +770,10 @@ async function viewPresidente(abaInicial, token) {
   document.title = 'Presidente da República · Placar Público';
   const atual = pres ? gestaoAtual(pres) : null;
   const item = { nome: atual ? atual.nome : 'Presidente da República', partido: atual ? atual.partido : '' };
+  const temIndice = !!(pres && pres.indice && pres.indice.nota != null);
   mostrar(app, html`
     <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
-    ${heroPerfil({ item, cargoTxt: 'Presidente da República', meta: atual ? `${atual.partido || 'Sem partido'} · no cargo desde ${dataBR(atual.inicio)}` : 'Quem está no cargo: veja a linha do tempo na Visão geral', selos: [html`<span class="distintivo distintivo-neutro">Sem índice: base de dados incompleta</span>`], anelNota: false })}
+    ${heroPerfil({ item: { ...item, nota: temIndice ? pres.indice.nota : null }, cargoTxt: 'Presidente da República', meta: atual ? `${atual.partido || 'Sem partido'} · no cargo desde ${dataBR(atual.inicio)}` : 'Quem está no cargo: veja a linha do tempo na Visão geral', selos: [temIndice ? html`<span class="distintivo distintivo-neutro">Índice econômico parcial: ${pres.indice.parcial && pres.indice.parcial.usadas != null ? `${pres.indice.parcial.usadas} de ${pres.indice.parcial.total} indicadores` : 'economia e dívida'}</span>` : html`<span class="distintivo distintivo-neutro">Sem índice econômico por enquanto</span>`], anelNota: temIndice })}
     ${barraAbas(ABAS_PRESIDENTE, '#/presidente')}
     <section class="painel" id="painel" role="tabpanel" aria-live="polite"></section>`);
   const ctx = { pres, catalogo, precos };

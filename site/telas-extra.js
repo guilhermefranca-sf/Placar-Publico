@@ -17,6 +17,7 @@ const ARQUIVO_LISTA = { federais: 'federais.json', governadores: 'governadores.j
 const LINHAS_COMPARAR = {
   federais: [
     { rot: 'Índice do Placar', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
+    { rot: 'Projetos aprovados (nota do critério)', ic: 'arquivo', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'aprov') || {}).s, fmt: v => dec(v), max: 100 },
     { rot: 'Presença nas sessões', ic: 'pessoas', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'pres') || {}).s, fmt: v => dec(v) + '%', max: 100 },
     { rot: 'Votações em que registrou voto', ic: 'urna', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'vot') || {}).s, fmt: v => dec(v) + '%', max: 100 },
     { rot: 'Projetos apresentados (4 anos)', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.projetos : null), fmt: v => fmtNum.format(v) },
@@ -24,7 +25,8 @@ const LINHAS_COMPARAR = {
     { rot: 'Anos de exercício efetivo na Câmara', ic: 'relogio', origem: 'calculado', natureza: 'quantitativo', valor: (i, x) => (x.hist ? x.hist.anosEfetivos : null), fmt: v => dec(v, 1) }
   ],
   executivos: [
-    { rot: 'Índice de responsabilidade fiscal', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
+    { rot: 'Índice de serviços públicos (parcial)', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
+    { rot: 'Áreas que entraram no índice', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.parcial ? i.parcial.usadas : null), fmt: v => `${v} de 5` },
     { rot: 'Gasto com pessoal (% da receita)', ic: 'pessoas', origem: 'oficial', natureza: 'proporcional', valor: i => (i.contas ? i.contas.pessoal : null), fmt: v => dec(v) + '%' },
     { rot: 'Dívida líquida (% da receita)', ic: 'cifrao', origem: 'oficial', natureza: 'proporcional', valor: i => (i.contas ? i.contas.divida : null), fmt: v => dec(v) + '%' },
     { rot: 'Relatórios entregues ao Tesouro', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.contas && i.contas.entregas ? i.contas.entregas.feitas : null), fmt: (v, i) => `${v} de ${i.contas.entregas.esperado}` },
@@ -184,8 +186,8 @@ function viewMais() {
     <p class="painel-sub">O que ainda não está no ar, e por quê. Nada disso é mostrado com número inventado enquanto não houver fonte oficial integrada.</p>
     <div class="cartoes-breve">${CARGOS_EM_BREVE.map(([t, d]) => html`<div class="breve">${icone('cadeado', 22)}<div><strong>${t}</strong>${d}</div></div>`)}
       <div class="breve">${icone('cadeado', 22)}<div><strong>Emendas parlamentares</strong>Ligação com o Portal da Transparência.</div></div>
-      <div class="breve">${icone('cadeado', 22)}<div><strong>Saúde, educação, segurança e obras</strong>Indicadores por estado e município.</div></div>
-      <div class="breve">${icone('cadeado', 22)}<div><strong>Deputados estaduais</strong>Hoje só a lista oficial de eleitos.</div></div>
+      <div class="breve">${icone('cadeado', 22)}<div><strong>Obras e infraestrutura, cobertura vacinal, leitos, gasto mínimo em saúde e educação</strong>Ainda sem fonte aberta integrada; por isso a infraestrutura fica "sem fonte" no índice de serviços públicos.</div></div>
+      <div class="breve">${icone('cadeado', 22)}<div><strong>Deputados estaduais</strong>Índice parcial só onde a Assembleia publica dados que o Placar lê (hoje, a verba de gabinete de São Paulo). As demais ficam sem índice, com o motivo.</div></div>
     </div>
     <p class="nota">Aplicativo independente, sem vínculo com governos, partidos ou órgãos públicos.</p>`);
 }

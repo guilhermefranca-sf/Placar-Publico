@@ -24,8 +24,8 @@ function viewMetodologia() {
     <h2>O que o índice é, e o que ele não é</h2>
     <div class="cartao"><ul class="pontos">
       <li>É um resumo de critérios objetivos que dá para medir com dados públicos, aplicados do mesmo jeito para todos do mesmo cargo. <strong>É uma regra criada pelo Placar Público, não um dado oficial.</strong></li>
-      <li><strong>Não mede a qualidade do trabalho.</strong> Um deputado pode apresentar muitos projetos ruins ou poucos projetos excelentes; o índice só enxerga a quantidade.</li>
-      <li><strong>Índice baixo não é acusação.</strong> Uma ausência pode ser missão oficial, licença ou doença. Um relatório fiscal pode estar atrasado por problema técnico da prefeitura. O índice não sabe o motivo.</li>
+      <li><strong>Não mede a qualidade do trabalho.</strong> Um deputado pode ter muitos projetos aprovados de pouca importância ou poucos de grande peso; o índice só enxerga a quantidade e o cumprimento de deveres.</li>
+      <li><strong>Índice baixo não é acusação.</strong> Uma ausência pode ser missão oficial, licença ou doença. Um dado pode estar defasado na fonte ou ainda não ter sido publicado. O índice não sabe o motivo.</li>
       <li>As cores servem só para leitura rápida: 70 ou mais em verde, de 40 a 69 em amarelo, abaixo de 40 em vermelho. Não são faixas oficiais.</li>
     </ul></div>
 
@@ -51,18 +51,39 @@ function viewMetodologia() {
     <h2>Deputados federais</h2>
     <p>Calculado todo dia com os dados dos últimos 4 anos civis (agora, ${periodo4}; o ano em curso conta até o dia da atualização). Cada deputado é avaliado desde a primeira presença registrada nesse período, então quem assumiu depois não é comparado como se estivesse lá desde o início. Licenças e afastamentos registrados no histórico oficial da Câmara não contam contra o deputado: nem as sessões e votações desse período, nem os meses no cálculo do gasto e dos projetos por mês. Quem tem menos de ${m.federais.minSessoes} sessões deliberativas desde a primeira presença fica sem índice, porque o período seria curto demais para comparar.</p>
     ${tabelaComponentes(m.federais.componentes)}
-    <p class="nota">Produção legislativa e tempo de exercício: a aba Projetos mostra a produção por ano de exercício efetivo, que é o total de projetos dividido pelos anos em que a Câmara registra o deputado “em exercício”. Licenças e períodos em que outra pessoa ocupou a vaga não entram na divisão. Isso é mostrado para o mandato atual e para todo o histórico, e não entra no índice.</p>
+    <p class="nota"><strong>Projetos aprovados</strong> (30%): conta os projetos e propostas (PL, PLP, PEC, PDL, PRC, MPV e semelhantes) de autoria ou coautoria do deputado cuja <em>situação atual</em>, nos arquivos abertos da Câmara, é “aprovado pela Câmara” (seguiu ao Senado ou à sanção) ou “transformado em norma jurídica”. Requerimentos, indicações e emendas não entram. O resultado é dividido pelos anos de exercício efetivo, e a nota é a posição do deputado entre todos os que estão em exercício. Só vale com pelo menos ${m.federais.minMesesAprovados || 12} meses de exercício no período e quando o arquivo da Câmara traz a situação dos projetos; se não traz, o critério fica <strong>sem dado</strong> (nunca vira zero) e o índice usa os demais. Aprovar não mede a qualidade nem o mérito da lei, e depende de acordos, da pauta e do partido.</p>
+    <p class="nota">Produção legislativa e tempo de exercício: a aba Projetos mostra a produção por ano de exercício efetivo, que é o total de projetos dividido pelos anos em que a Câmara registra o deputado “em exercício”. Licenças e períodos em que outra pessoa ocupou a vaga não entram na divisão.</p>
 
-    <h2>Prefeitos e governadores: índice de responsabilidade fiscal</h2>
-    <p>O índice de prefeitos e governadores se chama <strong>índice de responsabilidade fiscal</strong> porque olha só as contas públicas: gasto com pessoal e dívida. Ele não mede saúde, educação, segurança, obras ou serviços. Esses resultados aparecem nas abas do perfil, como informação, sem nota. Calculado com as contas do último ano fechado no Tesouro Nacional, atualizadas uma vez por semana. O índice é da administração, e vale para quem estava no cargo naquele ano. Quem tomou posse depois do fim do ano das contas fica sem índice até haver um ano fechado da sua gestão.</p>
+    <h2>Prefeitos e governadores: índice de serviços públicos</h2>
+    <p>O índice olha o <strong>resultado</strong> dos serviços públicos, em cinco áreas com o mesmo peso: <strong>saúde, educação, segurança, infraestrutura e saneamento (20% cada)</strong>. Gasto com pessoal e dívida <strong>saíram da nota</strong> e continuam nas abas do perfil, só como informação, junto com os limites da Lei de Responsabilidade Fiscal.</p>
     ${tabelaComponentes(m.executivos.componentes)}
-    <p>Limites usados nas comparações:</p>
+    <p style="margin-top:12px"><strong>Quais indicadores entram em cada área:</strong></p>
+    <div class="rolagem"><table class="tabela">
+      <thead><tr><th>Área</th><th>Indicador</th><th>Unidade</th><th>Quem tem</th><th>Melhor é</th></tr></thead>
+      <tbody>${m.executivos.indicadores.map(i => html`<tr><td>${(m.executivos.componentes.find(c => c.k === i.area) || {}).rotulo || i.area}</td><td>${i.nome}</td><td>${i.unidade}</td><td>${i.esferas.map(e => e === 'E' ? 'estados' : 'municípios').join(' e ')}</td><td>${i.sentido === 'menor' ? 'menor' : 'maior'}</td></tr>`)}</tbody>
+    </table></div>
+    <h3 class="sub-titulo">Como a pontuação é feita</h3>
+    <ul class="pontos">
+      <li><strong>Comparação com os pares:</strong> ${m.executivos.comparacao}</li>
+      <li><strong>Período:</strong> só entram anos com pelo menos ${m.executivos.minMesesDoAno} meses dentro dos últimos 48 meses. Mortalidade infantil é a soma dos óbitos dividida pela soma dos nascimentos do período (município com menos de ${m.executivos.minNascidos} nascimentos fica sem esse indicador); Ideb é o mais recente do período.</li>
+      <li><strong>Área = média dos indicadores</strong> que têm dado. <strong>Índice = média das áreas</strong> que têm dado, 20% cada, com os pesos redistribuídos entre elas.</li>
+      <li><strong>Índice parcial:</strong> aceito com ${m.executivos.minAreas.E} áreas ou mais nos estados e ${m.executivos.minAreas.M} ou mais nos municípios. O perfil sempre mostra de quantas áreas o índice é feito (por exemplo, “3 de 5”). Área sem dado fica de fora e <strong>nunca vira zero</strong>. Quem não alcança o mínimo fica sem índice, com o motivo.</li>
+      <li><strong>Segurança</strong> não se aplica a prefeitos (a segurança pública é principalmente estadual). <strong>Infraestrutura</strong> ainda não tem fonte aberta de resultado confirmada e aparece como “sem fonte”; o Placar não usa gasto como se fosse resultado.</li>
+      <li><strong>Saneamento</strong> usa o Censo 2022: é um retrato do território, não um resultado da gestão atual, e isso é dito no perfil.</li>
+      <li><strong>Gestão em exercício:</strong> se nenhum ano usado pertence, nem em parte, à gestão atual (por exemplo, prefeito empossado em 2025 cujos dados do IBGE ainda são anteriores), o índice <strong>não é dado</strong>: o perfil explica que o mandato atual é recente demais. Quando o período mistura gestões, o perfil avisa.</li>
+      <li><strong>Atribuição:</strong> resultados de saúde, educação, saneamento e segurança dependem de vários níveis de governo e de anos anteriores. O índice <strong>não prova mérito nem culpa</strong> de quem governa.</li>
+    </ul>
+    <p>Limites da Lei de Responsabilidade Fiscal, mostrados no perfil só como informação:</p>
     <ul class="limites">
       <li>Prefeituras: gasto com pessoal até ${m.executivos.limites.M.pessoal}% da receita corrente líquida; dívida até ${m.executivos.limites.M.divida}%.</li>
       <li>Estados e Distrito Federal: gasto com pessoal até ${m.executivos.limites.E.pessoal}%; dívida até ${m.executivos.limites.E.divida}%.</li>
     </ul>
-    <p>Se faltar algum critério (por exemplo, a prefeitura não enviou o relatório de dívida), o índice usa o que existe, mas só é calculado se houver pelo menos ${m.executivos.minComponentes} dos ${m.executivos.componentes.length}.</p>
-    <p class="nota">Os relatórios fiscais entregues ao Tesouro (RREO, RGF, DCA) <strong>não entram no índice</strong>. Eles aparecem na aba Transparência, como informação de transparência, porque um atraso pode ter causas técnicas e punir por isso distorceria o índice.</p>` : html`
+    <p class="nota">Os relatórios fiscais entregues ao Tesouro (RREO, RGF, DCA) <strong>não entram no índice</strong>. Eles aparecem na aba Transparência, como informação, porque um atraso pode ter causas técnicas e punir por isso distorceria o índice.</p>
+
+    ${m.presidente ? html`<h2>Presidente: índice econômico</h2>
+    <p>O presidente tem um <strong>índice econômico parcial</strong>, calculado só para a gestão em exercício, a partir de três séries nacionais. Não inclui saúde, educação, segurança, saneamento nem obras federais, que ainda não têm fonte integrada, e por isso é sempre mostrado como parcial. A Selic <strong>não entra</strong>: juros são decisão do Banco Central.</p>
+    ${tabelaComponentes(m.presidente.componentes)}
+    <p class="nota">O índice precisa de pelo menos ${m.presidente.minIndicadores} dos ${m.presidente.componentes.length} indicadores e de gestão com ${m.presidente.minMeses} meses ou mais no período. A meta de inflação considerada é ${String(m.presidente.meta.centro).replace('.', ',')}% com tolerância de ${String(m.presidente.meta.tolerancia).replace('.', ',')} ponto (confira em bcb.gov.br). Economia depende de muitos fatores, internos e externos: <strong>o índice não atribui o resultado só à pessoa do presidente</strong>.</p>` : ''}` : html`
     <p class="nota">Os detalhes das regras ainda não foram carregados.</p>`}
 
     <h2>Perfil dos gestores: 48 meses, uma gestão de cada vez</h2>
@@ -70,24 +91,32 @@ function viewMetodologia() {
       <li><strong>Recorte:</strong> os últimos 48 meses fechados antes do mês atual (em novembro de 2026, de novembro de 2022 a outubro de 2026).</li>
       <li><strong>Quem governava:</strong> cada gestão tem data de início e fim, tirada dos eleitos do TSE e, quando houve renúncia ou sucessão no meio do mandato, de um registro com fontes. Reeleição não é troca de gestor. Quando o recorte alcança uma gestão anterior, ela aparece separada, e nenhum número do passado é atribuído a quem governa hoje.</li>
       <li><strong>Ano com troca de gestor:</strong> as contas públicas são anuais. Um ano em que mudou o gestor aparece como “gestão dividida”, e o valor não é entregue a uma só pessoa. Anos que só em parte cabem nos 48 meses (como 2022) mostram o balanço do ano inteiro e dizem quantos meses ficam no recorte.</li>
-      <li><strong>Presidente:</strong> as séries são mensais (inflação, desocupação, juros e dívida), e cada mês é ligado à gestão da época, com um resumo por gestão. Não há índice para o presidente porque a base de indicadores ainda é parcial.</li>
+      <li><strong>Presidente:</strong> as séries são mensais (inflação, desocupação, juros e dívida), e cada mês é ligado à gestão da época, com um resumo por gestão. O índice econômico parcial usa só inflação, desocupação e dívida da gestão em exercício, com a ressalva de que a economia depende de muitos fatores.</li>
       <li><strong>Preços no Brasil (aba do presidente):</strong> gasolina (ANP), dólar (Banco Central) e cesta básica (DIEESE/Conab), com início do mandato, último valor e variação acumulada em cada gestão, e a comparação com as gestões anteriores. O preço sobe ou desce por petróleo, câmbio, safra, clima, impostos e decisões de empresas: <strong>o Placar não atribui a variação ao presidente</strong>, e esses números não entram em nenhum índice.</li>
       <li><strong>Resultados de serviços (IBGE Cidades):</strong> Ideb, matrículas, mortalidade infantil e internações por diarreia aparecem nas abas Educação e Saúde, ligados à gestão de cada ano. Anos antes do recorte de 48 meses servem só de comparação. Cada resultado indica quem é responsável pelo serviço (prefeitura, governo estadual ou vários níveis) e <strong>não entra no índice</strong>.</li>
       <li><strong>Despesa:</strong> mostramos empenhada (compromisso assumido), e paga (dinheiro que saiu), em colunas separadas. Anunciado não é pago, e contratado não é concluído.</li>
       <li><strong>Resultado de serviço de outro ente:</strong> água e esgoto de companhias estaduais ou concessionárias, segurança pública estadual e saúde ou educação financiadas por mais de um nível de governo não são atribuídos só ao prefeito ou governador.</li>
       <li><strong>Sem dado, sem número:</strong> o que não foi confirmado em fonte oficial aparece como “${MSG_INDISPONIVEL}”, com o órgão responsável e o link da fonte. Ausência nunca vira zero.</li>
-      <li><strong>Índice:</strong> o índice de responsabilidade fiscal de prefeitos e governadores continua usando só gasto com pessoal e dívida. Os demais indicadores aparecem como informação, sem nota automática, enquanto a base estiver incompleta.</li>
+      <li><strong>Índice:</strong> o índice de serviços públicos de prefeitos e governadores é parcial: usa as áreas que têm dado confiável (saúde, educação, segurança só para estados, e saneamento) e mostra de quantas é feito. Infraestrutura segue sem fonte.</li>
     </ul></div>
 
-    <h2>Deputados estaduais</h2>
-    <p>Este cargo <strong>ainda não tem índice</strong>. Não existe uma fonte única e padronizada com presença, votos e projetos dos 27 parlamentos estaduais. Em vez de inventar um índice com dados incomparáveis, o Placar Público mostra a lista oficial de eleitos. Vereadores não fazem parte do Placar Público.</p>
+    <h2>Deputados estaduais: índice parcial</h2>
+    <p>Cada Assembleia Legislativa publica seus dados de um jeito, e algumas quase não publicam. Por isso o índice dos deputados estaduais é <strong>parcial</strong> e existe só onde o Placar consegue <strong>ler e conferir</strong> os dados da Assembleia. Os critérios previstos são os mesmos dos deputados federais (verba de gabinete 30%, votações 20%, presença 20% e projetos aprovados 30%), mas hoje só o primeiro tem leitura integrada, e apenas para a Assembleia de São Paulo (Alesp).</p>
+    ${m && m.estaduais ? tabelaComponentes(m.estaduais.componentes) : ''}
+    <ul class="pontos">
+      <li><strong>Comparação só dentro da Assembleia:</strong> o deputado é comparado apenas com os colegas da mesma casa, e a posição (ranking) também é só dentro dela. Não há ranking nacional de deputados estaduais.</li>
+      <li><strong>Mínimos:</strong> ${m && m.estaduais ? `pelo menos ${m.estaduais.minMeses} meses de despesas no período (${m.estaduais.janelaAnos} anos) e ${m.estaduais.minColegas} colegas com dado para comparar; com ${m.estaduais.minCriterios} critério já é possível ter índice parcial` : 'veja o código'}. Quem tem pouco histórico fica sem índice; zero não é nota baixa.</li>
+      <li><strong>Sem dado, sem nota:</strong> deputados de Assembleias que o Placar ainda não lê aparecem “sem índice”, com o motivo. A lista de cada casa, o que foi pesquisado e o que ainda falta estão na página <a href="#/fontes">Fontes</a>.</li>
+      <li><strong>Privacidade:</strong> o Placar soma os valores por deputado e por mês. CNPJ, CPF e dados pessoais de fornecedores não são lidos nem guardados.</li>
+      <li><strong>Atenção:</strong> o índice parcial mede só quanto o deputado gasta da verba de gabinete em relação aos colegas, não o trabalho legislativo. Vereadores não fazem parte do Placar Público.</li>
+    </ul>
 
     <h2>O que ainda não está no ar</h2>
-    <p>Senadores, presidentes da Câmara e do Senado (gestão da Casa), emendas parlamentares, segurança pública, obras e boa parte dos indicadores de saúde, educação e saneamento (como cobertura vacinal, leitos, e o mínimo constitucional aplicado) ainda não têm fonte oficial integrada. Nessas áreas aparece a mensagem “${MSG_INDISPONIVEL}” e nenhum número é inventado. Veja a página <a href="#/verificacao">Como verificamos</a>.</p>
+    <p>Senadores, presidentes da Câmara e do Senado (gestão da Casa), emendas parlamentares, obras e infraestrutura e boa parte dos indicadores de saúde e educação (como cobertura vacinal, leitos, e o mínimo constitucional aplicado em saúde e educação) ainda não têm fonte oficial integrada. Nessas áreas aparece a mensagem “${MSG_INDISPONIVEL}” e nenhum número é inventado. Veja a página <a href="#/verificacao">Como verificamos</a>.</p>
 
     <h2>Limites que você precisa conhecer</h2>
     <div class="cartao"><ul class="pontos">
-      <li><strong>Prefeitos e governadores:</strong> o índice ainda não considera saúde, educação, obras e serviços, porque não há dado oficial comparável e atualizado para todas as cidades. Nas abas aparece o gasto por função (do balanço enviado ao Tesouro), que não mede a qualidade do serviço, e, como informação sem nota, o Ideb, as matrículas, a mortalidade infantil e as internações por diarreia (IBGE Cidades).</li>
+      <li><strong>Prefeitos e governadores:</strong> o índice de serviços públicos é parcial. Infraestrutura ainda não tem fonte; segurança só existe para estados; saneamento é um retrato de 2022; e os dados do IBGE Cidades chegam aos poucos, então muitos municípios ainda estão sem índice. Prefeitos empossados recentemente ficam sem índice até haver dado do mandato deles. Resultados dependem de vários níveis de governo.</li>
       <li><strong>Trocas de gestor:</strong> o TSE não traz sucessões por vice nem renúncias de 2026. Elas vêm de um registro nosso com fontes, em geral reportagens, com datas aproximadas quando a fonte não diz o dia. O registro cobre os governadores e as capitais conhecidos; outros municípios podem ter trocas que ainda não estão lá. Confirme sempre no site oficial.</li>
       <li><strong>Defasagem das fontes:</strong> o PIB municipal sai com cerca de dois anos de atraso; o Censo 2022 é uma foto de agosto de 2022, anterior ao recorte; o balanço de um ano só chega ao Tesouro no ano seguinte.</li>
       <li><strong>Quem está no cargo:</strong> a lista de prefeitos, governadores e deputados estaduais vem do TSE e mostra quem foi <em>eleito</em>. Renúncia, cassação, afastamento e suplentes que assumiram não aparecem.</li>
@@ -153,11 +182,21 @@ function viewFontes() {
         <tr><td><a href="https://cidades.ibge.gov.br" target="_blank" rel="noopener">IBGE Cidades e Estados</a></td>
           <td>Resultados por município e por estado: Ideb (Inep), matrículas (Censo Escolar), mortalidade infantil e internações por diarreia (Ministério da Saúde), como o IBGE os publica. Cada município é relido a cada 7 dias${f.cidades && f.cidades.municipios != null ? html` (${fmtNum.format((f.cidades.municipios || 0) + (f.cidades.estados || 0))} lidos na última rodada${f.cidades.pendentes ? `, ${fmtNum.format(f.cidades.pendentes)} ficaram para o dia seguinte` : ''})` : ''}.</td>
           <td class="curto">Todo dia (cada local, a cada 7 dias)</td><td class="curto">${quando(f.cidades)}</td><td class="curto">${status(f.cidades)}</td></tr>
+        <tr><td><a href="https://www.gov.br/mj/pt-br/assuntos/sua-seguranca/seguranca-publica/estatistica" target="_blank" rel="noopener">Sinesp, Ministério da Justiça e Segurança Pública</a></td>
+          <td>Ocorrências criminais por estado: homicídios dolosos (vítimas) e roubos de veículos, usados na área de segurança do índice dos governadores. Só entram anos com 12 meses de dados.</td>
+          <td class="curto">Toda semana</td><td class="curto">${quando(f.seguranca)}</td><td class="curto">${status(f.seguranca)}</td></tr>
+        <tr><td><a href="https://www.al.sp.gov.br/dados-abertos/" target="_blank" rel="noopener">Alesp, Assembleia Legislativa de São Paulo</a></td>
+          <td>Despesas de gabinete por deputado e por mês, usadas no índice parcial dos deputados estaduais de São Paulo. Só valores por mês; fornecedores e documentos pessoais não são lidos.</td>
+          <td class="curto">Todo dia</td><td class="curto">${quando(f.estaduais)}</td><td class="curto">${status(f.estaduais)}</td></tr>
         <tr><td>ANP, Banco Central e DIEESE/Conab</td>
           <td>Preços no Brasil, na aba do presidente: gasolina (ANP, preço médio de revenda semanal, mensal e por estado), dólar (Banco Central, PTAX de venda) e cesta básica (DIEESE em parceria com a Conab, por capital).</td>
           <td class="curto">Todo dia</td><td class="curto">${quando(f.precos)}</td><td class="curto">${status(f.precos)}</td></tr>
       </tbody>
     </table></div>
+
+    <h2>Assembleias Legislativas: situação de cada uma</h2>
+    <p>O índice dos deputados estaduais só existe onde o Placar consegue ler e conferir os dados da Assembleia. Esta é a situação de cada casa.</p>
+    <div id="assembleias"><div class="esq" style="height:120px"></div></div>
 
     <h2>Quão em tempo real?</h2>
     <p>Os índices, as votações e os votos são recalculados todo dia de madrugada. O histórico de mandatos, o TSE e o Tesouro mudam pouco e são atualizados uma vez por semana. As abas Projetos, Gastos e Fiscalização do perfil de cada deputado federal, e a lista de sessões sem presença, consultam a Câmara na hora em que são abertas.</p>
@@ -165,6 +204,26 @@ function viewFontes() {
     <h2>Quem faz</h2>
     <p>O Placar Público é um aplicativo independente, sem vínculo com a Câmara dos Deputados, o TSE, o Tesouro Nacional, partidos ou governos. Se você encontrar um número que não bate com a fonte oficial, o endereço da fonte está acima: a fonte oficial é sempre a referência.</p>
   </article>`);
+
+  const alvoAssembleias = $('#assembleias');
+  const STATUS_ASSEMBLEIA = { 'integrada-parcial': 'Integrada em parte', 'pesquisada-nao-integrada': 'Pesquisada, ainda não integrada' };
+  const NOMES_CRITERIO = { cota: 'verba de gabinete', pres: 'presença', vot: 'votações', aprov: 'projetos aprovados' };
+  const NOMES_API = { sim: 'sim', parcial: 'parcial', nao: 'não' };
+  lerArquivo('assembleias.json').then(a => {
+    if (!alvoAssembleias || !document.body.contains(alvoAssembleias)) return;
+    mostrar(alvoAssembleias, html`<div class="rolagem"><table class="tabela">
+        <thead><tr><th>UF</th><th>Assembleia</th><th class="curto">API aberta</th><th>Situação no Placar</th><th>Critérios lidos</th><th>Observação</th></tr></thead>
+        <tbody>${a.itens.map(i => html`<tr><td>${i.uf}</td>
+          <td>${(i.portais || []).map(urlSegura).find(Boolean) ? html`<a href="${(i.portais || []).map(urlSegura).find(Boolean)}" target="_blank" rel="noopener">${i.casa}</a>` : i.casa}</td>
+          <td class="curto">${NOMES_API[i.api] || '—'}</td>
+          <td>${STATUS_ASSEMBLEIA[i.statusPlacar] || i.statusPlacar}</td>
+          <td>${(i.criteriosLidos || []).length ? i.criteriosLidos.map(k => NOMES_CRITERIO[k] || k).join(', ') : 'nenhum'}</td>
+          <td>${i.observacao || ''}</td></tr>`)}</tbody>
+      </table></div>
+      <p class="nota">${a.aviso || ''} Pesquisado em ${a.pesquisadoEm ? dataBR(a.pesquisadoEm) : '—'}. Base da pesquisa: ${a.fonteDoEstudo || ''}</p>`);
+  }).catch(() => {
+    if (alvoAssembleias) mostrar(alvoAssembleias, indisponivel('O registro das Assembleias ainda não foi gerado. Ele aparece depois da próxima atualização diária.'));
+  });
 }
 
 function viewVerificacao() {
