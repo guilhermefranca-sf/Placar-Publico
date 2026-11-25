@@ -2,11 +2,13 @@
 // e grava os arquivos que o site lê, na pasta site/dados.
 //
 //   Todo dia:         deputados federais (Câmara): índice dos últimos 4 anos; só o ano em curso é lido de novo
+//                     preços no Brasil (ANP, Banco Central, DIEESE) para a aba do presidente
+//                     resultados do IBGE Cidades (Ideb, matrículas, saúde): cada município é relido a cada 7 dias
 //   A cada 7 dias:    eleitos (TSE) e contas de prefeituras e estados (Tesouro Nacional)
 //
 // Para forçar tudo agora:  node scripts/atualizar.mjs --forcar
 
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,6 +19,8 @@ import { gerarHistoricos } from './historico.mjs';
 import { gerarEleitos, anosVigentes, UFS } from './tse.mjs';
 import { carregarEntes, indexarEntes, acharMunicipio, acharMunicipioParecido, gerarContas, notaExecutivo } from './siconfi.mjs';
 import { atualizarAdministracoes, atualizarIbge, atualizarPresidente, atualizarExecutivos } from './executivos.mjs';
+import { atualizarPrecos } from './precos.mjs';
+import { atualizarCidades } from './ibge-cidades.mjs';
 
 const DIAS_ENTRE_ATUALIZACOES_PESADAS = 7;
 // O GitHub corta a rotina em 180 minutos. A coleta dos anos de contas usa só o tempo que sobrar até este limite.
@@ -91,6 +95,10 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
   const dest = lerJsonSeExistir(path.join(saida, 'destaques.json')) || {};
   const arquivo = (n) => path.join(saida, n);
 
+  // Vereadores foram retirados do aplicativo: apaga o que uma versão anterior tenha deixado na pasta de dados.
+  delete meta.cargos.vereadores;
+  for (const nome of readdirSync(saida)) if (/^vereadores-[A-Z]{2}\.json$/.test(nome)) rmSync(path.join(saida, nome), { force: true });
+
   // ---------- TSE e Tesouro: a cada 7 dias ----------
   const precisaPesada = !soFederais && (forcar || !antigo.fontes?.siconfi?.ok || !antigo.fontes?.tse?.ok || !antigo.fontes?.historico?.ok ||
     idadeEmDias(antigo.fontes.siconfi.atualizadoEm, hoje) >= DIAS_ENTRE_ATUALIZACOES_PESADAS ||
@@ -153,14 +161,12 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
       eleitos = await gerarEleitos({ baixarZip, anos, hoje });
       for (const w of eleitos.avisos) log('TSE aviso: ' + w);
       for (const uf of UFS) {
-        if (eleitos.vereadores[uf]) gravarJson(arquivo(`vereadores-${uf}.json`), { uf, ano: anos.municipal, itens: eleitos.vereadores[uf] });
         if (eleitos.estaduais[uf]) gravarJson(arquivo(`estaduais-${uf}.json`), { uf, ano: anos.estaduais, itens: eleitos.estaduais[uf] });
       }
       const contar = (o) => Object.values(o).reduce((a, l) => a + l.length, 0);
       meta.fontes.tse = { ok: true, atualizadoEm: hoje.toISOString(), eleicoes: anos, avisos: eleitos.avisos.length };
-      meta.cargos.vereadores = { total: contar(eleitos.vereadores) };
       meta.cargos.estaduais = { total: contar(eleitos.estaduais) };
-      log(`TSE: ${contar(eleitos.prefeitos)} prefeitos, ${contar(eleitos.vereadores)} vereadores, ${contar(eleitos.estaduais)} deputados estaduais, ${eleitos.governadores.length} governadores.`);
+      log(`TSE: ${contar(eleitos.prefeitos)} prefeitos, ${contar(eleitos.estaduais)} deputados estaduais, ${eleitos.governadores.length} governadores.`);
     } catch (e) {
       log(`TSE: FALHOU. ${e.message}`);
       meta.fontes.tse = { ...(antigo.fontes?.tse || {}), ok: false, erro: String(e.message).slice(0, 300), tentouEm: hoje.toISOString() };
@@ -273,6 +279,11 @@ export async function atualizar({ fontes, baixarZip, saida, hoje = new Date(), f
     if (velha('administracoes')) await passo('administracoes', 'Gestões', () => atualizarAdministracoes({ baixarZip, pasta: saida, hoje, trocas, log }));
     if (velha('ibge')) await passo('ibge', 'IBGE', () => atualizarIbge({ json: fontes.json, pasta: saida, hoje, log }));
     await passo('presidente', 'Presidente', () => atualizarPresidente({ json: fontes.json, pasta: saida, hoje, log }));
+    // Preços no Brasil (gasolina, dólar, cesta básica): todo dia; usa no máximo 10 minutos.
+    if (fontes.binario) await passo('precos', 'Preços', () => atualizarPrecos({ json: fontes.json, binario: fontes.binario, pasta: saida, hoje, orcamentoMs: 10 * 60000, log }));
+    // Resultados do IBGE Cidades (Ideb, matrículas, mortalidade infantil, diarreia): cada município é relido a cada 7 dias,
+    // e a coleta continua no dia seguinte de onde parou. Usa no máximo 12 minutos por rodada.
+    await passo('cidades', 'IBGE Cidades', () => atualizarCidades({ json: fontes.json, pasta: saida, hoje, orcamentoMs: 12 * 60000, log }));
     const exercicio = exercicioDoTesouro(hoje);
     const sobra = Math.min(orcamentoSeriesMs, limiteTotalMs - (Date.now() - inicioDaRotina));
     const prefill = contasDoExercicio ? { [exercicio]: Object.fromEntries(Object.entries(contasDoExercicio).map(([k, c]) => [k, c.erro ? { erro: c.erro } : { rgf: c.rgf, pessoal: c.pessoal, divida: c.divida }])) } : {};
@@ -302,6 +313,7 @@ async function baixarParaDisco(url) {
 const fontesReais = {
   json: (url) => buscar(url, { formato: 'json' }),
   texto: (url) => buscar(url, { formato: 'texto' }),
+  binario: (url) => buscar(url, { formato: 'binario', limiteMs: 180000 }),
   cotas: async (ano) => lerDoZip(await baixarParaDisco(`https://www.camara.leg.br/cotas/Ano-${ano}.csv.zip`), `Ano-${ano}.csv`)
 };
 

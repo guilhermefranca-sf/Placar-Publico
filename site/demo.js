@@ -143,7 +143,6 @@ function demoConstruir() {
   DEMO.ranking = { ano: 2024, exercicio: 2025, total: todosPref.length, comNota: prefCom, itens: todosPref.map(compacto) };
   DEMO.governadores = { ano: 2022, exercicio: 2025, total: governadores.length, comNota: govCom, itens: governadores };
   DEMO.estaduais = {};
-  DEMO.vereadores = {};
   DEMO.meta = {
     versao: 1, geradoEm: agora, demo: true,
     fontes: {
@@ -151,33 +150,23 @@ function demoConstruir() {
       tse: { ok: true, atualizadoEm: agora, eleicoes: { municipal: 2024, governadores: 2022, estaduais: 2022 }, avisos: 0 },
       siconfi: { ok: true, atualizadoEm: agora, exercicio: 2025, entes: todosPref.length + governadores.length, comErro: 0 },
       historico: { ok: true, atualizadoEm: agora, total: federais.length, falhas: 0, semHistorico: 0 },
-      administracoes: { ok: true, atualizadoEm: agora }, ibge: { ok: true, atualizadoEm: agora }, presidente: { ok: true, atualizadoEm: agora }, series: { ok: true, atualizadoEm: agora }
+      administracoes: { ok: true, atualizadoEm: agora }, ibge: { ok: true, atualizadoEm: agora }, presidente: { ok: true, atualizadoEm: agora }, series: { ok: true, atualizadoEm: agora }, precos: { ok: true, atualizadoEm: agora }
     },
     cargos: {
       federais: { total: federais.length, comNota: fedCom, media: demoMedia(federais) },
       governadores: { total: governadores.length, comNota: govCom, media: demoMedia(governadores) },
       prefeitos: { total: todosPref.length, comNota: prefCom, media: demoMedia(todosPref) },
-      estaduais: { total: 0 }, vereadores: { total: 0 }
+      estaduais: { total: 0 }
     }
   };
-  let totE = 0, totV = 0;
+  let totE = 0;
   for (const uf of UFS) {
     const nE = Math.min(94, DEMO_BANCADA[uf] * 2);
     const rE = aleatorio(1000 + UFS.indexOf(uf));
     DEMO.estaduais[uf] = { uf, ano: 2022, itens: Array.from({ length: nE }, (_, k) => demoPessoa(rE, { id: String(600000 + UFS.indexOf(uf) * 100 + k), uf, situacao: k % 3 ? 'Eleito por quociente partidário' : 'Eleito por média' })) };
     totE += nE;
-    if (uf === 'DF') { DEMO.vereadores[uf] = null; continue; }
-    const rV = aleatorio(5000 + UFS.indexOf(uf));
-    const itens = [];
-    prefeitos[uf].forEach((p, k) => {
-      const n = 9 + (k % 5);
-      for (let v = 0; v < n; v++) itens.push(demoPessoa(rV, { id: String(500000000 + UFS.indexOf(uf) * 10000 + k * 20 + v), uf, municipio: p.municipio, cod: p.cod }));
-    });
-    DEMO.vereadores[uf] = { uf, ano: 2024, itens };
-    totV += itens.length;
   }
   DEMO.meta.cargos.estaduais.total = totE;
-  DEMO.meta.cargos.vereadores.total = totV;
 
   /* Como votou? (votações fictícias, com matérias que não existem) */
   const rv = aleatorio(777);
@@ -348,6 +337,44 @@ function demoAno(r, ano, ctx) {
   return reg;
 }
 
+/* Resultados do IBGE Cidades (números inventados, como o resto da demonstração). */
+function demoResultados(r, { janela, gestoes, hojeAno, esfera, pop, idx }) {
+  if (idx % 9 === 4) return null; // simula "ainda não coletado"
+  const anoDe = +janela.de.slice(0, 4), anoAte = +janela.ate.slice(0, 4);
+  const anosIdeb = [], anosAnuais = [];
+  for (let a = anoDe - 4; a <= hojeAno - 1; a++) { if (a % 2 === 1) anosIdeb.push(a); if (a <= hojeAno - 2) anosAnuais.push(a); }
+  const caminho = (anos, ini, passo, min, max, casas) => { let v = ini; const o = {}; for (const a of anos) { v = Math.max(min, Math.min(max, v + (r() - 0.45) * passo)); o[a] = casas ? +v.toFixed(casas) : Math.round(v); } return o; };
+  const series = {};
+  const base = 3.8 + r() * 1.6;
+  for (const [et, desl] of [['ai', 0.9], ['af', 0], ['em', -0.5]]) {
+    for (const rede of ['publica', 'municipal', 'estadual']) {
+      if (rede === 'municipal' && et === 'em') continue;       // rede municipal quase não tem ensino médio
+      if (rede === 'municipal' && idx % 7 === 3 && et === 'af') continue; // simula município sem nota
+      series[`ideb.${et}.${rede}`] = caminho(anosIdeb, base + desl + (rede === 'estadual' ? -0.2 : 0), 0.5, 2.5, 8, 1);
+    }
+  }
+  const matr = esfera === 'M' ? Math.round(pop * 0.17) : Math.round(pop * 0.17);
+  series['mat.pre'] = caminho(anosAnuais, matr * 0.2, matr * 0.02, 10, 1e9, 0);
+  series['mat.ef'] = caminho(anosAnuais, matr * 0.65, matr * 0.02, 10, 1e9, 0);
+  series['mat.em'] = caminho(anosAnuais, matr * 0.25, matr * 0.02, 10, 1e9, 0);
+  series[esfera === 'M' ? 'mat.creche.municipal' : 'mat.creche.estadual'] = caminho(anosAnuais, matr * 0.06, matr * 0.01, 1, 1e9, 0);
+  const nasc = caminho(anosAnuais, Math.max(30, pop * 0.012), Math.max(3, pop * 0.0004), 10, 1e9, 0);
+  const obit = Object.fromEntries(Object.entries(nasc).map(([a, n]) => [a, Math.max(0, Math.round(n * (0.008 + r() * 0.012)))]));
+  series['saude.nascidos'] = nasc;
+  series['saude.obitos'] = obit;
+  series['saude.mortalidade'] = Object.fromEntries(Object.entries(nasc).map(([a, n]) => [a, +((obit[a] / n) * 1000).toFixed(2)]));
+  if (esfera === 'M') series['saude.diarreia'] = caminho(anosAnuais.filter(a => a !== hojeAno - 2), 2.1, 0.8, 0.1, 9, 2);
+  const anos = {};
+  for (const lista of Object.values(series)) for (const a of Object.keys(lista)) {
+    if (anos[a]) continue;
+    const n = +a;
+    if (n < anoDe || n > anoAte) { anos[a] = { noRecorte: false, mesesNaJanela: 0, atribuicao: null }; continue; }
+    const a0 = demoMax(`${a}-01-01`, janela.de), b0 = demoMin(`${a}-12-31`, janela.ate);
+    anos[a] = { noRecorte: true, mesesNaJanela: (+b0.slice(0, 4) - +a0.slice(0, 4)) * 12 + (+b0.slice(5, 7) - +a0.slice(5, 7)) + 1, atribuicao: demoAtribuir(gestoes, `${a}-01-01`, `${a}-12-31`) };
+  }
+  return { coletadoEm: janela.referencia, series, anos };
+}
+
 function demoExecutivo(cargo, item, idx) {
   demoConstruir();
   const hoje = new Date();
@@ -370,7 +397,8 @@ function demoExecutivo(cargo, item, idx) {
     ente: { ibge: item.ibge, nome: ehPref ? item.municipio : NOMES_UF[item.uf], uf: item.uf, esfera, populacao: pop },
     janela, aviso: DEMO_AVISO,
     gestoes: gestoes.filter(g => (g.inicio <= janela.ate && g.fim >= janela.de) || g.situacao !== 'encerrada'),
-    anos, contexto, entregas: item.contas ? item.contas.entregas : null
+    anos, contexto, entregas: item.contas ? item.contas.entregas : null,
+    resultados: demoResultados(aleatorio(Number(item.ibge) * 17 + 3), { janela, gestoes, hojeAno, esfera, pop, idx })
   };
 }
 
@@ -436,11 +464,12 @@ function gerarDemo(nome) {
   if (nome === 'correcoes.json') return DEMO.correcoes;
   if (nome === 'indicadores.json') return INDICADORES_DEMO;
   if (nome === 'executivos/presidente.json') return demoPresidente();
+  if (nome === 'precos.json') return PRECOS_DEMO; // números fictícios (site/precos-demo.js)
   const ex = /^executivos\/(\d+)\.json$/.exec(nome);
   if (ex) return demoExecutivoPorIbge(ex[1]);
   const h = /^deputados\/(\d+)\.json$/.exec(nome);
   if (h) return demoHistorico(h[1]);
-  const m = /^(prefeitos|estaduais|vereadores)-([A-Z]{2})\.json$/.exec(nome);
+  const m = /^(prefeitos|estaduais)-([A-Z]{2})\.json$/.exec(nome);
   if (m) {
     const [, tipo, uf] = m;
     const dado = tipo === 'prefeitos' ? (DEMO.prefeitos[uf] ? { uf, ano: 2024, exercicio: 2025, itens: DEMO.prefeitos[uf] } : null) : DEMO[tipo][uf];

@@ -7,7 +7,7 @@
    Notícias, Fontes) e, para o presidente da Câmara, Gestão da Presidência.
    Governador e prefeito: abas de economia, áreas de governo, gastos,
    prestação de contas e fontes.
-   Deputado estadual e vereador: ficha da lista oficial de eleitos.
+   Deputado estadual: ficha da lista oficial de eleitos.
    Regra de todas as abas: nada é inventado. Sem dado oficial, aparece a
    mensagem padrão e, quando se sabe, a fonte prevista.
    ===================================================================== */
@@ -64,14 +64,14 @@ function cartaoIndice(item, grupo) {
   const porK = new Map(comp.map(c => [c.k, c]));
   const linhas = defs.length ? defs : comp.map(c => ({ k: c.k, rotulo: c.k, peso: null }));
   if (!comp.length) {
-    return html`<section class="cartao"><h2 class="painel-titulo">Como o índice é formado ${selo('indice')}</h2>
+    return html`<section class="cartao"><h2 class="painel-titulo">Como o ${nomeIndice(grupo)} é formado ${selo('indice', '', grupo === 'federais' ? '' : 'Índice fiscal do Placar')}</h2>
       <p class="painel-sub">${item.motivo || 'Não há dados suficientes para mostrar os critérios.'}</p>
       <p class="nota" style="margin-top:0">Veja em <a href="#/metodologia">Metodologia</a> quais critérios entram no índice.</p></section>`;
   }
   const faltam = linhas.some(d => !porK.has(d.k) || porK.get(d.k).s == null);
   return html`<section class="cartao">
-    <h2 class="painel-titulo">Como o índice é formado ${selo('indice')}</h2>
-    <p class="painel-sub">Cada critério vai de 0 a 100. O índice é a média deles, com os pesos abaixo. Ele é uma regra do Placar Público, não um dado oficial.</p>
+    <h2 class="painel-titulo">Como o ${nomeIndice(grupo)} é formado ${selo('indice', '', grupo === 'federais' ? '' : 'Índice fiscal do Placar')}</h2>
+    <p class="painel-sub">Cada critério vai de 0 a 100. O ${nomeIndice(grupo)} é a média deles, com os pesos abaixo. Ele é uma regra do Placar Público, não um dado oficial.</p>
     <ul class="comp-lista">${linhas.map(d => {
       const c = porK.get(d.k);
       const s = c ? c.s : null;
@@ -714,7 +714,7 @@ function fichaCartao(item) {
 }
 
 /* =====================================================================
-   Deputado estadual e vereador (sem índice)
+   Deputado estadual (sem índice)
    ===================================================================== */
 
 async function viewEleito(cargo, uf, id, token) {

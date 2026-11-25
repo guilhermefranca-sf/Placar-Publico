@@ -53,8 +53,8 @@ function viewMetodologia() {
     ${tabelaComponentes(m.federais.componentes)}
     <p class="nota">Produção legislativa e tempo de exercício: a aba Projetos mostra a produção por ano de exercício efetivo, que é o total de projetos dividido pelos anos em que a Câmara registra o deputado “em exercício”. Licenças e períodos em que outra pessoa ocupou a vaga não entram na divisão. Isso é mostrado para o mandato atual e para todo o histórico, e não entra no índice.</p>
 
-    <h2>Prefeitos e governadores</h2>
-    <p>Calculado com as contas do último ano fechado no Tesouro Nacional, atualizadas uma vez por semana. O índice é da administração, e vale para quem estava no cargo naquele ano. Quem tomou posse depois do fim do ano das contas fica sem índice até haver um ano fechado da sua gestão.</p>
+    <h2>Prefeitos e governadores: índice de responsabilidade fiscal</h2>
+    <p>O índice de prefeitos e governadores se chama <strong>índice de responsabilidade fiscal</strong> porque olha só as contas públicas: gasto com pessoal e dívida. Ele não mede saúde, educação, segurança, obras ou serviços. Esses resultados aparecem nas abas do perfil, como informação, sem nota. Calculado com as contas do último ano fechado no Tesouro Nacional, atualizadas uma vez por semana. O índice é da administração, e vale para quem estava no cargo naquele ano. Quem tomou posse depois do fim do ano das contas fica sem índice até haver um ano fechado da sua gestão.</p>
     ${tabelaComponentes(m.executivos.componentes)}
     <p>Limites usados nas comparações:</p>
     <ul class="limites">
@@ -71,24 +71,26 @@ function viewMetodologia() {
       <li><strong>Quem governava:</strong> cada gestão tem data de início e fim, tirada dos eleitos do TSE e, quando houve renúncia ou sucessão no meio do mandato, de um registro com fontes. Reeleição não é troca de gestor. Quando o recorte alcança uma gestão anterior, ela aparece separada, e nenhum número do passado é atribuído a quem governa hoje.</li>
       <li><strong>Ano com troca de gestor:</strong> as contas públicas são anuais. Um ano em que mudou o gestor aparece como “gestão dividida”, e o valor não é entregue a uma só pessoa. Anos que só em parte cabem nos 48 meses (como 2022) mostram o balanço do ano inteiro e dizem quantos meses ficam no recorte.</li>
       <li><strong>Presidente:</strong> as séries são mensais (inflação, desocupação, juros e dívida), e cada mês é ligado à gestão da época, com um resumo por gestão. Não há índice para o presidente porque a base de indicadores ainda é parcial.</li>
+      <li><strong>Preços no Brasil (aba do presidente):</strong> gasolina (ANP), dólar (Banco Central) e cesta básica (DIEESE/Conab), com início do mandato, último valor e variação acumulada em cada gestão, e a comparação com as gestões anteriores. O preço sobe ou desce por petróleo, câmbio, safra, clima, impostos e decisões de empresas: <strong>o Placar não atribui a variação ao presidente</strong>, e esses números não entram em nenhum índice.</li>
+      <li><strong>Resultados de serviços (IBGE Cidades):</strong> Ideb, matrículas, mortalidade infantil e internações por diarreia aparecem nas abas Educação e Saúde, ligados à gestão de cada ano. Anos antes do recorte de 48 meses servem só de comparação. Cada resultado indica quem é responsável pelo serviço (prefeitura, governo estadual ou vários níveis) e <strong>não entra no índice</strong>.</li>
       <li><strong>Despesa:</strong> mostramos empenhada (compromisso assumido), e paga (dinheiro que saiu), em colunas separadas. Anunciado não é pago, e contratado não é concluído.</li>
       <li><strong>Resultado de serviço de outro ente:</strong> água e esgoto de companhias estaduais ou concessionárias, segurança pública estadual e saúde ou educação financiadas por mais de um nível de governo não são atribuídos só ao prefeito ou governador.</li>
       <li><strong>Sem dado, sem número:</strong> o que não foi confirmado em fonte oficial aparece como “${MSG_INDISPONIVEL}”, com o órgão responsável e o link da fonte. Ausência nunca vira zero.</li>
-      <li><strong>Índice:</strong> o índice de prefeitos e governadores continua usando só gasto com pessoal e dívida. Os demais indicadores aparecem como informação, sem nota automática, enquanto a base estiver incompleta.</li>
+      <li><strong>Índice:</strong> o índice de responsabilidade fiscal de prefeitos e governadores continua usando só gasto com pessoal e dívida. Os demais indicadores aparecem como informação, sem nota automática, enquanto a base estiver incompleta.</li>
     </ul></div>
 
-    <h2>Deputados estaduais e vereadores</h2>
-    <p>Estes cargos <strong>ainda não têm índice</strong>. Não existe uma fonte única e padronizada com presença, votos e projetos dos 27 parlamentos estaduais e de mais de cinco mil câmaras municipais. Em vez de inventar um índice com dados incomparáveis, o Placar Público mostra a lista oficial de eleitos.</p>
+    <h2>Deputados estaduais</h2>
+    <p>Este cargo <strong>ainda não tem índice</strong>. Não existe uma fonte única e padronizada com presença, votos e projetos dos 27 parlamentos estaduais. Em vez de inventar um índice com dados incomparáveis, o Placar Público mostra a lista oficial de eleitos. Vereadores não fazem parte do Placar Público.</p>
 
     <h2>O que ainda não está no ar</h2>
-    <p>Senadores, presidentes da Câmara e do Senado (gestão da Casa), emendas parlamentares e boa parte dos indicadores de saúde, educação, segurança, saneamento e obras ainda não têm fonte oficial integrada. Nessas áreas aparece a mensagem “${MSG_INDISPONIVEL}” e nenhum número é inventado. Veja a página <a href="#/verificacao">Como verificamos</a>.</p>
+    <p>Senadores, presidentes da Câmara e do Senado (gestão da Casa), emendas parlamentares, segurança pública, obras e boa parte dos indicadores de saúde, educação e saneamento (como cobertura vacinal, leitos, e o mínimo constitucional aplicado) ainda não têm fonte oficial integrada. Nessas áreas aparece a mensagem “${MSG_INDISPONIVEL}” e nenhum número é inventado. Veja a página <a href="#/verificacao">Como verificamos</a>.</p>
 
     <h2>Limites que você precisa conhecer</h2>
     <div class="cartao"><ul class="pontos">
-      <li><strong>Prefeitos e governadores:</strong> o índice ainda não considera saúde, educação, obras e serviços, porque não há dado oficial comparável e atualizado para todas as cidades. Nas abas aparece o gasto por função (do balanço enviado ao Tesouro), que não mede a qualidade do serviço.</li>
+      <li><strong>Prefeitos e governadores:</strong> o índice ainda não considera saúde, educação, obras e serviços, porque não há dado oficial comparável e atualizado para todas as cidades. Nas abas aparece o gasto por função (do balanço enviado ao Tesouro), que não mede a qualidade do serviço, e, como informação sem nota, o Ideb, as matrículas, a mortalidade infantil e as internações por diarreia (IBGE Cidades).</li>
       <li><strong>Trocas de gestor:</strong> o TSE não traz sucessões por vice nem renúncias de 2026. Elas vêm de um registro nosso com fontes, em geral reportagens, com datas aproximadas quando a fonte não diz o dia. O registro cobre os governadores e as capitais conhecidos; outros municípios podem ter trocas que ainda não estão lá. Confirme sempre no site oficial.</li>
       <li><strong>Defasagem das fontes:</strong> o PIB municipal sai com cerca de dois anos de atraso; o Censo 2022 é uma foto de agosto de 2022, anterior ao recorte; o balanço de um ano só chega ao Tesouro no ano seguinte.</li>
-      <li><strong>Quem está no cargo:</strong> a lista de prefeitos, governadores, deputados estaduais e vereadores vem do TSE e mostra quem foi <em>eleito</em>. Renúncia, cassação, afastamento e suplentes que assumiram não aparecem.</li>
+      <li><strong>Quem está no cargo:</strong> a lista de prefeitos, governadores e deputados estaduais vem do TSE e mostra quem foi <em>eleito</em>. Renúncia, cassação, afastamento e suplentes que assumiram não aparecem.</li>
       <li><strong>Prefeituras:</strong> o município do TSE é ligado ao do Tesouro pelo nome e pelo estado. Quando os dois órgãos escrevem o nome um pouco diferente (por exemplo “Assú” e “Açu”), só é aceito o município do mesmo estado que for claramente o mais parecido. Se houver dúvida ou empate, a pessoa fica sem índice, em vez de arriscar um valor errado.</li>
       <li><strong>Histórico de mandatos:</strong> a Câmara registra a partir da 50ª legislatura (1995). Mandatos anteriores ou em outras Casas e cargos não aparecem.</li>
       <li><strong>Em tempo real?</strong> Não exatamente. Os índices e votos são atualizados todo dia; o histórico de mandatos, o TSE e o Tesouro, toda semana. As abas Projetos, Gastos e Fiscalização, e a lista de ausências, consultam a Câmara na hora em que você abre.</li>
@@ -131,7 +133,7 @@ function viewFontes() {
           <td>Posse, licenças, reassunções e fim de cada mandato, Mesa Diretora e dados cadastrais${f.historico && f.historico.total ? html` (${fmtNum.format(f.historico.total - (f.historico.falhas || 0))} de ${fmtNum.format(f.historico.total)} deputados)` : ''}.</td>
           <td class="curto">Toda semana</td><td class="curto">${quando(f.historico)}</td><td class="curto">${status(f.historico)}</td></tr>
         <tr><td><a href="https://dadosabertos.tse.jus.br" target="_blank" rel="noopener">Dados Abertos do TSE</a></td>
-          <td>Lista de eleitos: prefeitos, vereadores, governadores e deputados estaduais${anosTse ? ` (${anosTse})` : ''}.</td>
+          <td>Lista de eleitos: prefeitos, governadores e deputados estaduais${anosTse ? ` (${anosTse})` : ''}.</td>
           <td class="curto">Toda semana</td><td class="curto">${quando(f.tse)}</td><td class="curto">${status(f.tse)}</td></tr>
         <tr><td><a href="https://siconfi.tesouro.gov.br" target="_blank" rel="noopener">Siconfi, Tesouro Nacional</a></td>
           <td>Gasto com pessoal, dívida e relatórios fiscais entregues por prefeituras e estados${f.siconfi && f.siconfi.exercicio ? ` (exercício ${f.siconfi.exercicio}; ${fmtNum.format(f.siconfi.entes || 0)} prefeituras e estados${f.siconfi.comErro ? `, ${fmtNum.format(f.siconfi.comErro)} consultas com erro` : ''})` : ''}.</td>
@@ -148,6 +150,12 @@ function viewFontes() {
         <tr><td><a href="https://dadosabertos.bcb.gov.br" target="_blank" rel="noopener">IBGE e Banco Central: séries do presidente</a></td>
           <td>Inflação (IPCA), desocupação (PNAD Contínua), Selic e dívida pública, mês a mês.</td>
           <td class="curto">Todo dia</td><td class="curto">${quando(f.presidente)}</td><td class="curto">${status(f.presidente)}</td></tr>
+        <tr><td><a href="https://cidades.ibge.gov.br" target="_blank" rel="noopener">IBGE Cidades e Estados</a></td>
+          <td>Resultados por município e por estado: Ideb (Inep), matrículas (Censo Escolar), mortalidade infantil e internações por diarreia (Ministério da Saúde), como o IBGE os publica. Cada município é relido a cada 7 dias${f.cidades && f.cidades.municipios != null ? html` (${fmtNum.format((f.cidades.municipios || 0) + (f.cidades.estados || 0))} lidos na última rodada${f.cidades.pendentes ? `, ${fmtNum.format(f.cidades.pendentes)} ficaram para o dia seguinte` : ''})` : ''}.</td>
+          <td class="curto">Todo dia (cada local, a cada 7 dias)</td><td class="curto">${quando(f.cidades)}</td><td class="curto">${status(f.cidades)}</td></tr>
+        <tr><td>ANP, Banco Central e DIEESE/Conab</td>
+          <td>Preços no Brasil, na aba do presidente: gasolina (ANP, preço médio de revenda semanal, mensal e por estado), dólar (Banco Central, PTAX de venda) e cesta básica (DIEESE em parceria com a Conab, por capital).</td>
+          <td class="curto">Todo dia</td><td class="curto">${quando(f.precos)}</td><td class="curto">${status(f.precos)}</td></tr>
       </tbody>
     </table></div>
 

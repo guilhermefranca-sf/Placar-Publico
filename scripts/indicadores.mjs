@@ -11,6 +11,7 @@
 
 import { atribuirAno, atribuirMes, mesesNaJanela, AVISO_COBERTURA } from './administracoes.mjs';
 import { FUNCOES } from './series-fiscais.mjs';
+import { DEFS_CIDADES, PAGINA_CIDADES } from './ibge-cidades.mjs';
 
 export const MSG_NAO_CONFIRMADO = 'Dado não encontrado ou não confirmado';
 
@@ -56,6 +57,14 @@ const CENSO = (secao, id, nome, tabela, chave) => ({
   limitacoes: 'Retrato do Censo de 2022: não é uma série de 48 meses e a data de referência fica ANTES do início do recorte. Mostra a situação em que a gestão encontrou o município, não um resultado dela. O serviço pode ser de concessionária ou do estado, não só da prefeitura.'
 });
 
+/** Resultados do IBGE Cidades (Ideb, matrículas, mortalidade infantil, diarreia): um indicador do catálogo por série coletada. */
+const INDICADORES_CIDADES = DEFS_CIDADES.map((d) => ({
+  id: `cid.${d.chave}`,
+  secao: d.secao, esferas: d.esferas, tipo: 'oficial', nome: d.nome, unidade: d.unidade,
+  campo: { k: 'cidades', chave: d.chave, grupo: d.grupo, casas: d.casas, responsavel: d.responsavel },
+  periodicidade: d.periodicidade, fonte: d.fonte, orgao: d.orgao, url: PAGINA_CIDADES, apiId: d.id, limitacoes: d.limitacoes
+}));
+
 export const CATALOGO = [
   // ---- Serviços básicos e infraestrutura urbana (gasto) ----
   ...bloco('servicos', 'servicos', AMBOS, '15', 'urbanismo'),
@@ -74,13 +83,13 @@ export const CATALOGO = [
   // ---- Saúde ----
   ...bloco('saude', 'saude', AMBOS, '10', 'saúde'),
   pendente('saude.minimo', 'saude', AMBOS, 'Receita própria aplicada em ações e serviços públicos de saúde (mínimo legal: 15% nos municípios, 12% nos estados)', '% da receita', 'SIOPS — Sistema de Informações sobre Orçamentos Públicos em Saúde', 'Ministério da Saúde', 'https://www.gov.br/saude/pt-br/composicao/seidigi/siops'),
-  pendente('saude.resultados', 'saude', AMBOS, 'Cobertura vacinal, mortalidade infantil, leitos e cobertura da atenção básica', 'vários', 'DATASUS / CNES / SI-PNI', 'Ministério da Saúde', 'https://datasus.saude.gov.br/', 'Indicadores de saúde dependem também do estado, da União e de fatores sociais.'),
+  ...INDICADORES_CIDADES.filter((i) => i.secao === 'saude'),
+  pendente('saude.cobertura', 'saude', AMBOS, 'Cobertura vacinal, leitos e cobertura da atenção básica', 'vários', 'DATASUS / CNES / SI-PNI', 'Ministério da Saúde', 'https://datasus.saude.gov.br/', 'Indicadores de saúde dependem também do estado, da União e de fatores sociais. Mortalidade infantil e internações por diarreia já estão integradas (acima).'),
 
   // ---- Educação ----
   ...bloco('educacao', 'educ', AMBOS, '12', 'educação'),
   pendente('educ.minimo', 'educacao', AMBOS, 'Receita de impostos aplicada na manutenção e desenvolvimento do ensino (mínimo legal: 25%)', '% da receita', 'SIOPE — Sistema de Informações sobre Orçamentos Públicos em Educação', 'FNDE / Ministério da Educação', 'https://www.fnde.gov.br/index.php/financiamento/siope'),
-  pendente('educ.ideb', 'educacao', AMBOS, 'Ideb (qualidade e fluxo escolar)', 'pontos de 0 a 10', 'Inep — Ideb', 'Instituto Nacional de Estudos e Pesquisas Educacionais (Inep)', 'https://www.gov.br/inep/pt-br/areas-de-atuacao/pesquisas-estatisticas-e-indicadores/ideb', 'O Ideb sai de dois em dois anos; a rede estadual e a municipal têm resultados separados.'),
-  pendente('educ.matriculas', 'educacao', AMBOS, 'Matrículas, creche e vagas (Censo Escolar)', 'alunos', 'Inep — Censo Escolar', 'Inep', 'https://www.gov.br/inep/pt-br/areas-de-atuacao/pesquisas-estatisticas-e-indicadores/censo-escolar'),
+  ...INDICADORES_CIDADES.filter((i) => i.secao === 'educacao'),
 
   // ---- Segurança ----
   ...bloco('seguranca', 'seg', AMBOS, '06', 'segurança pública'),
@@ -218,10 +227,37 @@ export function contextoDoEnte(id, ibge) {
   return c;
 }
 
+/**
+ * Resultados do IBGE Cidades de um ente, ligados à gestão de cada ano.
+ *   reg: { em, s: { chave: { ano: valor } } } (arquivo anos/cidades-{UF}.json), ou nada se ainda não foi coletado.
+ * Anos até 4 anos antes do recorte entram só como "linha de base" (sem atribuir a gestão); os anos do recorte ficam
+ * ligados à gestão da época, e um ano com troca de gestor é marcado como dividido, como nas contas anuais.
+ */
+export function resultadosDoEnte(reg, { gestoes, janela }) {
+  if (!reg || !reg.s) return null;
+  const anoDe = Number(janela.de.slice(0, 4));
+  const anoAte = Number(janela.ate.slice(0, 4));
+  const series = {};
+  const anos = {};
+  for (const [chave, serie] of Object.entries(reg.s)) {
+    const o = {};
+    for (const [a, v] of Object.entries(serie)) {
+      const n = Number(a);
+      if (n < anoDe - 4 || !Number.isFinite(v)) continue;
+      o[a] = v;
+      if (!anos[a]) anos[a] = n >= anoDe && n <= anoAte
+        ? { noRecorte: true, mesesNaJanela: mesesNaJanela(janela, `${a}-01-01`, `${a}-12-31`), atribuicao: atribuirAno(gestoes, n) }
+        : { noRecorte: false, mesesNaJanela: 0, atribuicao: null };
+    }
+    if (Object.keys(o).length) series[chave] = o;
+  }
+  return { coletadoEm: reg.em ?? null, series, anos };
+}
+
 /** Entra no perfil quem encosta na janela e quem está em exercício ou toma posse depois dela. */
 const noPerfil = (g, janela) => (g.inicio <= janela.ate && g.fim >= janela.de) || g.situacao !== 'encerrada';
 
-export function montarExecutivoEnte({ cargo, ente, nome, uf, gestoes, registros, janela, hoje, contexto, entregas, exercicio }) {
+export function montarExecutivoEnte({ cargo, ente, nome, uf, gestoes, registros, janela, hoje, contexto, entregas, exercicio, cidades = null }) {
   const anos = {};
   for (const ano of anosDaJanela(janela)) anos[ano] = registroDoAno(registros?.[ano], ano, { gestoes, janela, hoje, exercicio });
   const recorte = gestoes.filter((g) => noPerfil(g, janela));
@@ -229,7 +265,8 @@ export function montarExecutivoEnte({ cargo, ente, nome, uf, gestoes, registros,
     versao: 1, geradoEm: hoje.toISOString(), cargo,
     ente: { ibge: ente.cod_ibge, nome, uf, esfera: ente.esfera, populacao: ente.populacao ?? null },
     janela, aviso: AVISO_COBERTURA,
-    gestoes: recorte, anos, contexto: contexto || {}, entregas: entregas || null
+    gestoes: recorte, anos, contexto: contexto || {}, entregas: entregas || null,
+    resultados: resultadosDoEnte(cidades, { gestoes, janela })
   };
 }
 

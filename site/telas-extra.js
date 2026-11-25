@@ -24,7 +24,7 @@ const LINHAS_COMPARAR = {
     { rot: 'Anos de exercício efetivo na Câmara', ic: 'relogio', origem: 'calculado', natureza: 'quantitativo', valor: (i, x) => (x.hist ? x.hist.anosEfetivos : null), fmt: v => dec(v, 1) }
   ],
   executivos: [
-    { rot: 'Índice do Placar', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
+    { rot: 'Índice de responsabilidade fiscal', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
     { rot: 'Gasto com pessoal (% da receita)', ic: 'pessoas', origem: 'oficial', natureza: 'proporcional', valor: i => (i.contas ? i.contas.pessoal : null), fmt: v => dec(v) + '%' },
     { rot: 'Dívida líquida (% da receita)', ic: 'cifrao', origem: 'oficial', natureza: 'proporcional', valor: i => (i.contas ? i.contas.divida : null), fmt: v => dec(v) + '%' },
     { rot: 'Relatórios entregues ao Tesouro', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.contas && i.contas.entregas ? i.contas.entregas.feitas : null), fmt: (v, i) => `${v} de ${i.contas.entregas.esperado}` },
@@ -185,7 +185,7 @@ function viewMais() {
     <div class="cartoes-breve">${CARGOS_EM_BREVE.map(([t, d]) => html`<div class="breve">${icone('cadeado', 22)}<div><strong>${t}</strong>${d}</div></div>`)}
       <div class="breve">${icone('cadeado', 22)}<div><strong>Emendas parlamentares</strong>Ligação com o Portal da Transparência.</div></div>
       <div class="breve">${icone('cadeado', 22)}<div><strong>Saúde, educação, segurança e obras</strong>Indicadores por estado e município.</div></div>
-      <div class="breve">${icone('cadeado', 22)}<div><strong>Deputados estaduais e vereadores</strong>Hoje só a lista oficial de eleitos.</div></div>
+      <div class="breve">${icone('cadeado', 22)}<div><strong>Deputados estaduais</strong>Hoje só a lista oficial de eleitos.</div></div>
     </div>
     <p class="nota">Aplicativo independente, sem vínculo com governos, partidos ou órgãos públicos.</p>`);
 }

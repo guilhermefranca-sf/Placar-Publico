@@ -31,19 +31,15 @@ const CARGOS = {
   },
   governadores: {
     rotulo: 'Governadores', singular: 'Governador(a)', nota: true,
-    lead: 'O índice olha as contas do governo estadual: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal.'
+    lead: 'O índice de responsabilidade fiscal olha só as contas do governo estadual: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal. Ele não mede saúde, educação ou obras.'
   },
   prefeitos: {
     rotulo: 'Prefeitos', singular: 'Prefeito(a)', nota: true,
-    lead: 'O índice olha as contas da prefeitura: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal.'
+    lead: 'O índice de responsabilidade fiscal olha só as contas da prefeitura: gasto com pessoal e dívida, comparados aos limites da Lei de Responsabilidade Fiscal. Ele não mede saúde, educação ou obras.'
   },
   estaduais: {
     rotulo: 'Deputados estaduais', singular: 'Deputado(a) estadual', nota: false,
     lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). O índice ainda não existe: veja o motivo abaixo.'
-  },
-  vereadores: {
-    rotulo: 'Vereadores', singular: 'Vereador(a)', nota: false,
-    lead: 'Lista dos vereadores eleitos em cada município. O índice ainda não existe: veja o motivo abaixo.'
   }
 };
 // Tipos de proposição: PL, PEC etc. As siglas fora desta lista aparecem como vieram da API.
@@ -58,7 +54,9 @@ const NOMES_TIPO = {
 const SIGLAS_PROJETO = new Set(['PL', 'PLP', 'PEC', 'PDL', 'PRC', 'MPV', 'PLV', 'PLN', 'PFC']);
 const SIGLAS_REQUERIMENTO = new Set(['REQ', 'RIC', 'INC', 'RCP']);
 
-const ORDEM_CARGOS = ['federais', 'governadores', 'prefeitos', 'estaduais', 'vereadores'];
+/* Nome do índice em cada cargo. Para prefeitos e governadores ele mede só duas contas fiscais, e o nome diz isso. */
+const nomeIndice = cargo => (['governadores', 'prefeitos', 'executivos'].includes(cargo) ? 'índice de responsabilidade fiscal' : 'índice');
+const ORDEM_CARGOS = ['federais', 'governadores', 'prefeitos', 'estaduais'];
 
 /* ---------- 2. Utilitários ---------- */
 
@@ -294,7 +292,7 @@ const indisponivel = (extra = '') => html`<div class="indisp" role="note">${icon
    calculado = conta feita pelo Placar Público sobre dados oficiais (proporção, soma, média)
    indice    = o índice de 0 a 100, que é uma regra nossa, explicada na Metodologia   */
 const NOMES_SELO = { oficial: 'Dado oficial', calculado: 'Calculado', indice: 'Índice do Placar' };
-const selo = (origem, natureza = '') => html`<span class="selo selo-${origem}" title="${origem === 'oficial' ? 'Valor publicado pela fonte oficial, sem conta nossa.' : origem === 'calculado' ? 'Conta feita pelo Placar Público com dados oficiais. A regra está na Metodologia.' : 'Índice criado pelo Placar Público. Não é um dado oficial.'}">${NOMES_SELO[origem]}${natureza ? ' · ' + natureza : ''}</span>`;
+const selo = (origem, natureza = '', rotuloIndice = '') => html`<span class="selo selo-${origem}" title="${origem === 'oficial' ? 'Valor publicado pela fonte oficial, sem conta nossa.' : origem === 'calculado' ? 'Conta feita pelo Placar Público com dados oficiais. A regra está na Metodologia.' : 'Índice criado pelo Placar Público. Não é um dado oficial.'}">${rotuloIndice && origem === 'indice' ? rotuloIndice : NOMES_SELO[origem]}${natureza ? ' · ' + natureza : ''}</span>`;
 
 const fonteLinha = (fonte, atualizadoEm, url = '') => html`<p class="fonte-linha">${icone('arquivo', 14)}<span>Fonte: ${url ? html`<a href="${url}" target="_blank" rel="noopener">${fonte}</a>` : fonte}${atualizadoEm ? ` · atualizado em ${dataHoraBR(atualizadoEm)}` : ''}</span></p>`;
 
@@ -319,4 +317,6 @@ const notaHtml = (n, grande = false) => anel(n, { tam: grande ? 96 : 48, esp: gr
 const ABAS_FEDERAL = [['visao', 'Visão geral'], ['historico', 'Histórico de mandatos'], ['projetos', 'Projetos'], ['votos', 'Como votou?'], ['emendas', 'Emendas'], ['gastos', 'Gastos'], ['fiscalizacao', 'Fiscalização'], ['noticias', 'Notícias'], ['fontes', 'Fontes']];
 const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['servicos', 'Serviços básicos'], ['saneamento', 'Saneamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['infraestrutura', 'Infraestrutura'], ['obras', 'Obras'], ['economia', 'Economia'], ['orcamento', 'Orçamento'], ['transparencia', 'Transparência'], ['fontes', 'Fontes']];
 const ABAS_ANTIGAS = { nota: 'visao', votacoes: 'votos', presenca: 'visao' };
+// O presidente tem uma aba a mais, logo depois de Economia: "Preços no Brasil" (gasolina, dólar e cesta básica).
+const ABAS_PRESIDENTE = [...ABAS_EXECUTIVO.slice(0, ABAS_EXECUTIVO.findIndex(a => a[0] === 'economia') + 1), ['precos', 'Preços no Brasil'], ...ABAS_EXECUTIVO.slice(ABAS_EXECUTIVO.findIndex(a => a[0] === 'economia') + 1)];
 const ABAS_ANTIGAS_EXECUTIVO = { gastos: 'orcamento', contas: 'transparencia', planejamento: 'orcamento' };

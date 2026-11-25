@@ -2,7 +2,7 @@
 // Rodar:  node scripts/teste/rodar-teste.mjs
 // Usa os mesmos nomes de colunas e formatos que conferi nas fontes reais.
 
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, cpSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, cpSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -275,6 +275,27 @@ function respostaIbge(url) {
   const valor = (e) => (tabela === '6579' ? ibgeDe(e, periodo) : tabela === '5938' ? e.populacao * 1000 + Number(periodo) : 50 + (e.cod_ibge % 40) + 0.5);
   return [{ id: variavel, variavel: 'x', unidade: 'x', resultados: [{ classificacoes: [], series: lista.map((e) => ({ localidade: { id: String(e.cod_ibge) }, serie: { [periodo]: e.cod_ibge % 97 === 0 ? '-' : String(valor(e)) } })) }] }];
 }
+// IBGE Cidades: série inventada, com "-", valor impossível e rede que não existe, para conferir que nada disso vira número no perfil.
+const consultasCidades = [];
+function respostaCidades(url) {
+  const m = /\/indicadores\/([\d|]+)\/resultados\/([\d|]+)$/.exec(new URL(url).pathname);
+  if (!m) throw new Error('HTTP 404 em ' + url);
+  const ids = m[1].split('|').map(Number);
+  const locs = m[2].split('|');
+  consultasCidades.push({ ids, locs });
+  const serie = (id, l) => {
+    const n = Number(l);
+    if (id >= 78187 && id <= 78201) {
+      const rede = (id - 78187) % 5;
+      if (rede > 2) return {};
+      if (rede === 1 && n % 13 === 0) return { 2019: '-', 2021: '...', 2023: '-' };
+      return { 2015: '4.1', 2017: '4.8', 2019: '5.1', 2021: '5.4', 2023: String(5.8 + (n % 5) / 10) };
+    }
+    if (id === 30279) return { 2021: '11,2', 2022: '10.4', 2023: n % 17 === 0 ? '5000' : '9.9' };
+    return { 2022: String(100 + (n % 50)), 2023: String(120 + (n % 50)) };
+  };
+  return ids.map((id) => ({ id, res: locs.map((l) => ({ localidade: l, res: serie(id, l) })) }));
+}
 function respostaBcb(url) {
   const n = /bcdata\.sgs\.(\d+)\/dados/.exec(url)[1];
   const q = new URL(url).searchParams;
@@ -322,6 +343,7 @@ const fontes = {
     }
     if (url.includes('apidatalake') && url.includes('/dca?')) return respostaDca(url);
     if (url.includes('apidatalake')) return respostaSiconfi(url);
+    if (url.includes('servicodados.ibge.gov.br/api/v1/pesquisas/indicadores/')) return respostaCidades(url);
     if (url.includes('servicodados.ibge.gov.br')) return respostaIbge(url);
     if (url.includes('api.bcb.gov.br')) return respostaBcb(url);
     throw new Error('HTTP 404 em ' + url);
@@ -341,6 +363,10 @@ const TROCAS_TESTE = [
   { id: 't-sp', cargo: 'governador', uf: 'SP', saiu: { nome: 'Governador Sp' }, entrou: { nome: 'Vice Sp', partido: 'XYZ', vinculo: 'vice-governador' }, tipo: 'renúncia', data: null, dataAprox: '2026-04-04', fontes: [], divergencias: [] },
   { id: 't-mun', cargo: 'prefeito', uf: 'SP', municipio: 'Biritiba-Mirim', saiu: null, entrou: { nome: 'Vice Biritiba', partido: 'ABC', vinculo: 'vice-prefeito' }, tipo: 'renúncia', data: '2026-04-02', dataAprox: null, fontes: [], divergencias: [] }
 ];
+// Sobra de uma versão antiga que ainda tinha vereadores: a rotina deve apagar.
+mkdirSync(saida, { recursive: true });
+writeFileSync(path.join(saida, 'vereadores-MG.json'), '{"uf":"MG","itens":[{"nome":"Sobra antiga"}]}');
+writeFileSync(path.join(saida, 'meta.json'), JSON.stringify({ versao: 1, fontes: {}, cargos: { vereadores: { total: 5 } } }));
 const meta1 = await atualizar({ fontes, baixarZip, saida, hoje, log, trocas: TROCAS_TESTE });
 
 await caso('todas as fontes terminam bem', () => {
@@ -435,9 +461,10 @@ await caso('TSE: só eleitos; 2º turno conta uma vez; DF sem municipais; estadu
   assert.equal(pr.itens.filter((p) => p.nome === 'Prefeito Sp3').length, 1);
   assert.ok(pr.itens.every((p) => p.cod && p.municipio && p.partido));
   assert.ok(!existsSync(path.join(saida, 'prefeitos-DF.json')));
-  const ve = lerSaida('vereadores-MG.json');
-  assert.equal(ve.itens.length, 5 * 9);
-  assert.ok(ve.itens.every((v) => /^Eleito/.test(v.situacao)));
+  // Vereadores foram retirados do aplicativo: os dados de teste têm vereadores, mas nenhum arquivo deve ser gerado,
+  // e a sobra de uma versão antiga é apagada.
+  assert.ok(!existsSync(path.join(saida, 'vereadores-MG.json')), 'não deve existir arquivo de vereadores');
+  assert.ok(!('vereadores' in meta1.cargos), 'meta não deve ter vereadores');
   assert.equal(lerSaida('estaduais-DF.json').itens.length, 8);
   const g = lerSaida('governadores.json');
   assert.equal(g.total, 27);
@@ -630,7 +657,7 @@ const exec = (cod) => lerSaida(`executivos/${cod}.json`);
 const escolherMun = (k) => { for (const uf of UFS.filter((u) => u !== 'DF')) { const id = codPorMun[`${uf}${k}`]; if (id % 11 !== 0) return { uf, id }; } };
 
 await caso('perfil ampliado: as novas etapas terminam bem e gravam os arquivos', () => {
-  for (const f of ['administracoes', 'ibge', 'presidente', 'series']) assert.equal(meta1.fontes[f].ok, true, f);
+  for (const f of ['administracoes', 'ibge', 'presidente', 'series', 'cidades']) assert.equal(meta1.fontes[f].ok, true, f);
   assert.equal(meta1.fontes.administracoes.municipios, 130);
   assert.equal(meta1.fontes.administracoes.governadores, 27);
   assert.equal(meta1.fontes.administracoes.presidente, true);
@@ -720,6 +747,56 @@ await caso('IBGE: população, PIB e Censo 2022 entram no contexto; valor "-" do
   assert.equal(c.censo.agua, 50 + (id % 40) + 0.5);
   const semIbge = entes.find((x) => x.esfera === 'M' && x.cod_ibge % 97 === 0 && x.cod_ibge < 9000000 && x.cod_ibge % 11 !== 0);
   if (semIbge && existsSync(path.join(saida, `executivos/${semIbge.cod_ibge}.json`))) assert.ok(!('populacao' in exec(semIbge.cod_ibge).contexto));
+});
+
+await caso('IBGE Cidades: resultados entram no perfil ligados à gestão do ano; "-", valor impossível e rede inexistente não viram número', () => {
+  const { id } = escolherMun(1);
+  const d = exec(id);
+  const r = d.resultados;
+  assert.ok(r && r.coletadoEm, 'perfil com resultados');
+  const n6 = Number(String(id).slice(0, 6));
+  if (n6 % 13 === 0) assert.ok(!('ideb.ai.municipal' in r.series), 'só "-" do IBGE: sem série, nunca zero');
+  else assert.deepEqual(Object.keys(r.series['ideb.ai.municipal']), ['2019', '2021', '2023']);
+  assert.ok(!('ideb.ai.federal' in r.series) && !Object.keys(r.series).some((k) => k.endsWith('.federal') || k.endsWith('.privada')), 'redes que não coletamos não entram');
+  // linha de base: 2019 e 2021 ficam fora do recorte (nov/2022 a out/2026); 2015 é velho demais e fica de fora
+  assert.ok(!('2015' in r.series['ideb.ai.publica']), 'só até 4 anos antes do recorte');
+  assert.equal(r.anos['2019'].noRecorte, false);
+  assert.equal(r.anos['2019'].atribuicao, null, 'linha de base não é atribuída a gestão');
+  assert.equal(r.anos['2023'].noRecorte, true);
+  assert.equal(r.anos['2023'].atribuicao.tipo, 'unica');
+  assert.equal(r.anos['2023'].atribuicao.gestoes[0], 'g1');
+  assert.equal(r.anos['2023'].mesesNaJanela, 12);
+  assert.equal(r.series['saude.mortalidade']['2023'], 9.9);
+  assert.ok(r.series['saude.diarreia'], 'município tem internações por diarreia');
+  assert.ok(!('saude.diarreia' in exec(35).resultados.series), 'o IBGE não traz diarreia por estado');
+  assert.ok(exec(35).resultados.series['ideb.em.estadual'], 'estado tem Ideb da rede estadual');
+});
+
+await caso('IBGE Cidades: em todos os municípios, "-" some e o valor impossível (5000 por mil) é descartado, sem virar zero', () => {
+  let comTraco = 0, comImpossivel = 0, total = 0;
+  for (const e of readdirSync(path.join(saida, 'executivos'))) {
+    if (!/^\d{7}\.json$/.test(e)) continue;
+    const d = JSON.parse(readFileSync(path.join(saida, 'executivos', e), 'utf-8'));
+    if (!d.resultados) continue;
+    total++;
+    const n6 = Number(e.slice(0, 6));
+    const s = d.resultados.series;
+    if (n6 % 13 === 0) { comTraco++; assert.ok(!('ideb.ai.municipal' in s), e); }
+    if (n6 % 17 === 0) { comImpossivel++; assert.deepEqual(Object.keys(s['saude.mortalidade']), ['2021', '2022'], e); }
+    for (const serie of Object.values(s)) for (const v of Object.values(serie)) assert.ok(Number.isFinite(v) && v !== 0, `${e}: valor inválido ${v}`);
+  }
+  assert.ok(total >= 100, 'perfis com resultados: ' + total);
+  assert.ok(comTraco > 0 && comImpossivel > 0, 'o teste cobre os dois casos');
+});
+
+await caso('IBGE Cidades: consultas em lotes de localidades, só 6 dígitos para município e 2 para estado, sem repetir indicador', () => {
+  assert.ok(consultasCidades.length > 0);
+  for (const q of consultasCidades) {
+    assert.ok(q.locs.length <= 40, 'lote pequeno');
+    assert.equal(new Set(q.ids).size, q.ids.length);
+    assert.ok(q.locs.every((l) => /^\d{6}$/.test(l)) || q.locs.every((l) => /^\d{2}$/.test(l)), 'não mistura município e estado: ' + q.locs.slice(0, 3));
+    if (q.locs[0].length === 2) assert.ok(!q.ids.includes(60032), 'diarreia só para município');
+  }
 });
 
 await caso('governador: gestão de 2018, 2022, renúncia de 2026 (curadoria) e eleito de 2026 como futura', () => {

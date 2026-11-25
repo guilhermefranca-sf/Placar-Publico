@@ -174,6 +174,7 @@ function celula(ind, a) {
 
 /* ---------- Blocos de uma aba ---------- */
 
+const PAGINA_IBGE_CIDADES = 'https://cidades.ibge.gov.br/';
 const NOME_FUNCAO_PADRAO = { '15': 'Urbanismo', '17': 'Saneamento', '10': 'Saúde', '12': 'Educação', '06': 'Segurança pública', '26': 'Transporte', '16': 'Habitação' };
 
 function agruparIndicadores(lista) {
@@ -184,6 +185,7 @@ function agruparIndicadores(lista) {
     const k = i.campo && i.campo.k;
     if (['funcao', 'funcaoPc', 'funcaoPct'].includes(k)) pega(`funcao:${i.campo.codigo}`).itens.push(i);
     else if (k === 'censo') pega('censo').itens.push(i);
+    else if (k === 'cidades') pega(`cidades:${i.campo.grupo}`).itens.push(i);
     else if (['pib', 'pibPc', 'populacao'].includes(k)) pega('ibge').itens.push(i);
     else if (['total', 'totalPc'].includes(k)) pega('total').itens.push(i);
     else if (['pessoal', 'divida'].includes(k)) pega('rgf').itens.push(i);
@@ -245,6 +247,58 @@ function blocoCenso(ctx, itens) {
     </tbody></table></div>
     <p class="nota">Em muitos lugares água e esgoto são prestados por companhia estadual ou concessionária: o resultado não deve ser atribuído só ao prefeito.</p>
     ${sobreIndicadores(itens)}
+  </section>`;
+}
+
+/* ---------- Resultados do IBGE Cidades (Ideb, matrículas, mortalidade infantil, diarreia) ---------- */
+
+const TEXTO_CIDADES = {
+  ideb: ['Ideb: qualidade do ensino', 'Nota de 0 a 10 que combina o desempenho dos alunos nas provas e o fluxo escolar (aprovação). Sai de dois em dois anos, e cada rede de ensino (municipal ou estadual) tem a sua nota.', 'O Ideb reflete anos de ensino e fatores fora da escola, como renda e família. O Placar liga cada ano à gestão da época e não conclui que a nota é mérito ou culpa de quem governava. Prefeitura e governo estadual cuidam de redes diferentes: veja a coluna de responsabilidade.'],
+  matriculas: ['Matrículas (Censo Escolar)', 'Quantos alunos estão matriculados. Mede o tamanho do atendimento, não a qualidade do ensino.', 'Matrícula pode cair por menos nascimentos ou migração, e não só por decisão da gestão. Confira no link do IBGE quais redes cada indicador conta.'],
+  mortalidade: ['Mortalidade infantil', 'Óbitos de crianças com menos de 1 ano para cada mil nascidos vivos. Os nascidos vivos e os óbitos aparecem juntos porque, em município pequeno, um único óbito muda muito a taxa.', 'A saúde é financiada e executada por União, estados e municípios, e o resultado depende também de saneamento, renda e fatores sociais: o número não é atribuído só a quem governava.'],
+  diarreia: ['Internações por diarreia', 'Internações pelo SUS por diarreia, para cada mil habitantes. Só existe por município.', 'Depende muito de água tratada e esgoto, que muitas vezes são serviços de companhia estadual ou concessionária, e também da rede de saúde. Não é atribuído só ao prefeito.']
+};
+const RESPONSAVEL = (resp, esfera) => (resp === 'municipal' ? (esfera === 'M' ? 'Prefeitura' : 'Prefeituras (não é o governo estadual)') : resp === 'estadual' ? (esfera === 'E' ? 'Governo estadual' : 'Governo estadual (não é a prefeitura)') : 'Vários níveis de governo');
+
+function blocoCidades(ctx, itens, grupo) {
+  const [titulo, sub, nota] = TEXTO_CIDADES[grupo] || [itens[0].nome, '', ''];
+  const r = ctx.extra.resultados;
+  const ente = ctx.extra.ente || {};
+  const cabeca = html`<h2 class="painel-titulo">${titulo} ${selo('oficial')}</h2>${sub ? html`<p class="painel-sub">${sub}</p>` : ''}`;
+  if (!r) {
+    return html`<section class="cartao">${cabeca}
+      ${indisponivel('Os resultados do IBGE Cidades ainda não foram coletados para este perfil. A coleta é diária, relê cada município a cada 7 dias e continua de onde parou.')}
+      ${sobreIndicadores(itens)}</section>`;
+  }
+  const dados = itens.map(i => ({ i, serie: r.series[i.campo.chave] || null }));
+  const anos = [...new Set(dados.flatMap(d => Object.keys(d.serie || {})))].sort();
+  if (!anos.length) {
+    return html`<section class="cartao">${cabeca}
+      ${indisponivel(`${MSG_NAO_CONFIRMADO}: o IBGE não trouxe nenhum valor para este ${ctx.esfera === 'M' ? 'município' : 'estado'}.`)}
+      ${sobreIndicadores(itens)}</section>`;
+  }
+  const cabAno = ano => {
+    const a = (r.anos || {})[ano] || {};
+    if (!a.noRecorte) return html`<th class="ano-cab sem" scope="col"><span class="ano-n">${ano}</span><span class="ano-g">Antes do recorte</span><span class="ano-m">linha de base, sem gestão atribuída</span></th>`;
+    const rot = rotuloAno({ atribuicao: a.atribuicao }, ctx.extra);
+    return html`<th class="ano-cab ${rot.cls}" scope="col" ${rot.aviso ? html`title="${rot.aviso}"` : ''}><span class="ano-n">${ano}</span><span class="ano-g">${rot.tipo === 'dividida' ? 'Gestão dividida' : rot.txt}</span>${rot.tipo === 'dividida' ? html`<span class="ano-m">${rot.txt}</span>` : ''}${a.mesesNaJanela < 12 ? html`<span class="ano-m">${a.mesesNaJanela} de 12 meses no recorte</span>` : ''}</th>`;
+  };
+  const fmt = (v, c) => (c ? decN(v, c) : fmtNum.format(v));
+  const loc = ctx.esfera === 'M' ? String(ente.ibge || '').slice(0, 6) : String(ente.ibge || '');
+  const ids = [...new Set(itens.map(i => i.apiId).filter(Boolean))];
+  const confere = ids.length && /^\d{2,6}$/.test(loc) ? `https://servicodados.ibge.gov.br/api/v1/pesquisas/indicadores/${ids.join('|')}/resultados/${loc}` : null;
+  return html`<section class="cartao">${cabeca}
+    <p class="dica-rolagem">Deslize a tabela para o lado para ver os outros anos.</p>
+    <div class="rolagem"><table class="tabela tabela-anos">
+      <thead><tr><th scope="col" class="ind-cab">Indicador</th>${anos.map(cabAno)}</tr></thead>
+      <tbody>${dados.map(({ i, serie }) => html`<tr><th scope="row" class="ind-nome">${i.nome}<span class="ind-un">${i.unidade} <span class="resp-tag">${RESPONSAVEL(i.campo.responsavel, ctx.esfera)}</span></span></th>
+        ${serie ? anos.map(ano => (ano in serie ? html`<td class="cel cel-valor">${fmt(serie[ano], i.campo.casas)}</td>` : html`<td class="cel"><span class="cel-estado" title="${MSG_NAO_CONFIRMADO}">Sem valor</span></td>`))
+          : html`<td class="cel" colspan="${anos.length}"><span class="cel-estado" title="${MSG_NAO_CONFIRMADO}">${MSG_NAO_CONFIRMADO}</span></td>`}</tr>`)}</tbody>
+    </table></div>
+    <p class="nota">Cada coluna é um ano e mostra quem governava naquele ano; anos de antes do recorte de 48 meses servem só de comparação. “Sem valor” quer dizer que o IBGE não traz o número para aquele ano${grupo === 'ideb' ? ' (o Ideb sai só em anos ímpares)' : ''}: nunca é zero. ${nota}</p>
+    ${sobreIndicadores(itens)}
+    ${fonteColeta('IBGE, Cidades e Estados (dados do Inep e do Ministério da Saúde)', r.coletadoEm, urlSegura(PAGINA_IBGE_CIDADES))}
+    ${confere ? html`<p class="fonte-linha">${icone('externo', 14)}<span><a href="${confere}" target="_blank" rel="noopener">Conferir os números brutos no IBGE</a> (arquivo JSON, para quem quiser checar)</span></p>` : ''}
   </section>`;
 }
 
@@ -319,6 +373,7 @@ function blocoPendentes(ctx, itens) {
 function renderGrupo(ctx, g) {
   if (g.chave === 'pendentes') return blocoPendentes(ctx, g.itens);
   if (g.chave === 'censo') return blocoCenso(ctx, g.itens);
+  if (g.chave.startsWith('cidades:')) return blocoCidades(ctx, g.itens, g.chave.slice(8));
   if (g.chave === 'ibge') return blocoIbge(ctx, g.itens);
   if (g.chave === 'rgf') return blocoRgf(ctx, g.itens);
   if (g.chave === 'entregas') return blocoEntregas(ctx, g.itens);
@@ -663,6 +718,22 @@ function painelSecaoPresidente(el, ctx, secao) {
     ${!series.length && !pend.length ? html`<section class="cartao">${indisponivel('Nenhum indicador nacional desta área foi integrado ao Placar. Os serviços de saneamento, segurança e educação básica são, em grande parte, de estados e municípios: veja o perfil de cada governador e prefeito.')}</section>` : ''}`);
 }
 
+/** Três números de preços na Visão geral do presidente, com link para a aba. Sem arquivo de preços, não aparece nada. */
+function tilesPrecosVisao(pr) {
+  if (!pr) return '';
+  const g = pr.gasolina && pr.gasolina.atual && pr.gasolina.atual.semana;
+  const d = pr.dolar && pr.dolar.atual;
+  const c = pr.cesta && pr.cesta.capitais['São Paulo'];
+  const href = '#/presidente/precos';
+  return html`<h2 class="painel-titulo" style="margin-top:22px">Preços no Brasil</h2>
+    <p class="painel-sub">Dados objetivos de gasolina, dólar e cesta básica, sem atribuir a variação ao presidente. Veja o detalhe, por mandato, na aba Preços no Brasil.</p>
+    <div class="tiles tiles-3">
+      ${tile({ icone: 'grafico', cor: 'azul', rotulo: 'Gasolina (Brasil)', valor: g ? fmtR(g.v, 3) : '—', legenda: g ? `por litro · semana até ${dataBR(g.fim)}` : MSG_NAO_CONFIRMADO, origem: g ? 'oficial' : '', natureza: 'ANP', href })}
+      ${tile({ icone: 'cifrao', cor: 'laranja', rotulo: 'Dólar (PTAX venda)', valor: d ? fmtR(d.v, 4) : '—', legenda: d ? `em ${dataBR(d.d)}` : MSG_NAO_CONFIRMADO, origem: d ? 'oficial' : '', natureza: 'Banco Central', href })}
+      ${tile({ icone: 'moedas', cor: 'verde', rotulo: 'Cesta básica (São Paulo)', valor: c ? fmtR(c.ultimo.v) : '—', legenda: c ? mesAnoBR(c.ultimo.mes) : MSG_NAO_CONFIRMADO, origem: c ? 'oficial' : '', natureza: 'DIEESE/Conab', href })}
+    </div>`;
+}
+
 function painelVisaoPresidente(el, ctx) {
   const { pres, catalogo } = ctx;
   if (!pres) return mostrar(el, semPerfilAmpliado({}, 'visao'));
@@ -684,6 +755,7 @@ function painelVisaoPresidente(el, ctx) {
       ${t('grafico', 'roxo', 'Selic ao ano', 'pres.selic', 'Banco Central')}
       ${t('cifrao', 'verde', 'Dívida bruta do governo geral', 'pres.divida-bruta', 'Banco Central')}
     </div>
+    ${tilesPrecosVisao(ctx.precos)}
     <section class="cartao cartao-aviso">
       <h3>Por que não há índice para o presidente</h3>
       <p>O índice de 0 a 100 só existe quando há base completa de dados e regra clara. Para a Presidência, só economia e dívida estão integradas; saúde, educação, segurança, saneamento e obras federais ainda estão sem fonte confirmada, e muitos resultados dependem também de estados e municípios. O Placar prefere mostrar os dados por gestão a resumir tudo em uma nota.</p>
@@ -693,7 +765,7 @@ function painelVisaoPresidente(el, ctx) {
 async function viewPresidente(abaInicial, token) {
   const voltar = ['#/', 'Início'];
   mostrar(app, esqueletoPerfil(...voltar));
-  const [pres, catalogo] = await Promise.all([lerArquivo('executivos/presidente.json').catch(() => null), lerArquivo('indicadores.json').catch(() => null)]);
+  const [pres, catalogo, precos] = await Promise.all([lerArquivo('executivos/presidente.json').catch(() => null), lerArquivo('indicadores.json').catch(() => null), lerArquivo('precos.json').catch(() => null)]);
   if (token !== rotaToken) return;
   document.title = 'Presidente da República · Placar Público';
   const atual = pres ? gestaoAtual(pres) : null;
@@ -701,15 +773,16 @@ async function viewPresidente(abaInicial, token) {
   mostrar(app, html`
     <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
     ${heroPerfil({ item, cargoTxt: 'Presidente da República', meta: atual ? `${atual.partido || 'Sem partido'} · no cargo desde ${dataBR(atual.inicio)}` : 'Quem está no cargo: veja a linha do tempo na Visão geral', selos: [html`<span class="distintivo distintivo-neutro">Sem índice: base de dados incompleta</span>`], anelNota: false })}
-    ${barraAbas(ABAS_EXECUTIVO, '#/presidente')}
+    ${barraAbas(ABAS_PRESIDENTE, '#/presidente')}
     <section class="painel" id="painel" role="tabpanel" aria-live="polite"></section>`);
-  const ctx = { pres, catalogo };
+  const ctx = { pres, catalogo, precos };
   ligarAbas({
-    chave: 'presidente', abas: ABAS_EXECUTIVO, abaInicial, token, antigas: ABAS_ANTIGAS_EXECUTIVO,
+    chave: 'presidente', abas: ABAS_PRESIDENTE, abaInicial, token, antigas: ABAS_ANTIGAS_EXECUTIVO,
     desenharPainel: (aba, painel) => {
       mostrar(painel, html``);
       if (aba === 'visao') painelVisaoPresidente(painel, ctx);
       else if (aba === 'fontes') painelFontesPresidente(painel, ctx);
+      else if (aba === 'precos') painelPrecos(painel, ctx);
       else painelSecaoPresidente(painel, ctx, aba);
     }
   });
@@ -725,5 +798,9 @@ function painelFontesPresidente(el, ctx) {
     </tbody></table></div>
     <p class="nota">${(ctx.pres && ctx.pres.aviso) || ''} Cada série é buscada diretamente do IBGE (SIDRA) e do Banco Central (SGS), sem alteração. Os resumos por gestão (média, variação e acumulado) são contas do Placar sobre esses números.</p>
     ${ctx.pres && (ctx.pres.erros || []).length ? html`<p class="nota">Séries que falharam na última atualização: ${ctx.pres.erros.join('; ')}.</p>` : ''}
-  </section>`);
+  </section>
+  ${ctx.precos ? html`<section class="cartao"><h2 class="painel-titulo">Fontes da aba Preços no Brasil</h2>
+    <div class="rolagem"><table class="tabela"><thead><tr><th>Série</th><th>Fonte</th><th>Responsável</th><th>Limitações</th></tr></thead><tbody>
+      ${['gasolina', 'dolar', 'cesta'].map(k => { const f = ctx.precos.fontes[k]; return html`<tr><td>${f.nome}</td><td>${urlSegura(f.url) ? html`<a href="${f.url}" target="_blank" rel="noopener">${f.fonte}</a>` : f.fonte}</td><td>${f.orgao}</td><td>${f.limitacoes}</td></tr>`; })}
+    </tbody></table></div></section>` : ''}`);
 }

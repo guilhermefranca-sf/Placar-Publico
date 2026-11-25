@@ -5,6 +5,7 @@
 //   administracoes-{UF}.json, administracoes-BR.json   linha do tempo de gestões (semanal)
 //   ibge-contexto.json                                  população, PIB e Censo 2022 (semanal)
 //   anos/siconfi-{ano}.json                             cache por ano do Tesouro (continua de onde parou)
+//   anos/cidades-{UF}.json                              cache dos resultados do IBGE Cidades (Ideb, matrículas, saúde)
 //   executivos/{codigo do IBGE}.json                    perfil de cada prefeitura (7 dígitos) e de cada estado (2 dígitos)
 //   executivos/presidente.json                          séries mensais do presidente, por gestão
 //   indicadores.json                                    catálogo: fonte, órgão, link, limitações de cada indicador
@@ -90,24 +91,28 @@ export async function atualizarExecutivos({ json, pasta, hoje, exercicio, orcame
   for (const uf of UFS) {
     const prefs = lerJsonSeExistir(arq(pasta, `prefeitos-${uf}.json`));
     const admUf = lerJsonSeExistir(arq(pasta, `administracoes-${uf}.json`));
+    const cidadesUf = lerJsonSeExistir(arq(pasta, `anos/cidades-${uf}.json`))?.itens || {};
     if (!admUf) continue;
     for (const p of prefs?.itens || []) {
       const gestoes = admUf.municipios?.[p.cod]?.gestoes;
       if (!p.ibge || !gestoes?.length) { if (p.ibge) resumo.semGestao++; continue; }
       gravarJson(arq(pasta, `executivos/${p.ibge}.json`), montarExecutivoEnte({
         cargo: 'prefeito', ente: { cod_ibge: p.ibge, esfera: 'M', populacao: p.populacao }, nome: p.municipio, uf, gestoes,
-        registros: doEnte(p.ibge), janela, hoje, exercicio, contexto: contextoDoEnte(p.ibge, ibge), entregas: p.contas?.entregas ?? null
+        registros: doEnte(p.ibge), janela, hoje, exercicio, contexto: contextoDoEnte(p.ibge, ibge), entregas: p.contas?.entregas ?? null,
+        cidades: cidadesUf[p.ibge] || null
       }));
       resumo.ente++;
     }
   }
   const govs = lerJsonSeExistir(arq(pasta, 'governadores.json'));
   for (const g of govs?.itens || []) {
+    const cidadesG = lerJsonSeExistir(arq(pasta, `anos/cidades-${g.uf}.json`))?.itens?.[g.ibge] || null;
     const gestoes = lerJsonSeExistir(arq(pasta, `administracoes-${g.uf}.json`))?.estado?.gestoes;
     if (!g.ibge || !gestoes?.length) { if (g.ibge) resumo.semGestao++; continue; }
     gravarJson(arq(pasta, `executivos/${g.ibge}.json`), montarExecutivoEnte({
       cargo: 'governador', ente: { cod_ibge: g.ibge, esfera: g.uf === 'DF' ? 'D' : 'E', populacao: g.populacao }, nome: `Estado ${g.uf}`, uf: g.uf, gestoes,
-      registros: doEnte(g.ibge), janela, hoje, exercicio, contexto: contextoDoEnte(g.ibge, ibge), entregas: g.contas?.entregas ?? null
+      registros: doEnte(g.ibge), janela, hoje, exercicio, contexto: contextoDoEnte(g.ibge, ibge), entregas: g.contas?.entregas ?? null,
+      cidades: cidadesG
     }));
     resumo.ente++;
   }

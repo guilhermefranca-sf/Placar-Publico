@@ -4,11 +4,11 @@
    Placar Público — roteador
    Troca de tela pelo endereço depois do "#":
      #/                              início (deputados federais)
-     #/federais  #/governadores  #/prefeitos  #/estaduais  #/vereadores
+     #/federais  #/governadores  #/prefeitos  #/estaduais
      #/federais/{id}[/{aba}]         perfil de deputado federal
      #/{governadores|prefeitos}/{UF}/{id}[/{aba}]   perfil de governador e prefeito
      #/presidente[/{aba}]            perfil do Presidente da República
-     #/{estaduais|vereadores}/{UF}/{id}             ficha de eleito
+     #/estaduais/{UF}/{id}           ficha de deputado estadual
      #/comparar[/{cargo}/{A}/{B}]    comparar duas pessoas
      #/noticias   #/mais   #/metodologia   #/fontes   #/verificacao
    ===================================================================== */

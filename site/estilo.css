@@ -667,3 +667,26 @@ code { background: var(--superficie-2); padding: 1px 6px; border-radius: 6px; fo
   .tabela-anos .ind-cab { min-width: 130px; }
   .tabela-anos th.ano-cab { min-width: 108px; }
 }
+
+/* ---------- Aba "Preços no Brasil" ---------- */
+.curva { fill: none; stroke: var(--gc); stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.curva-ponto { fill: var(--gc); }
+.gr-zero { stroke: var(--tinta-2); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.gr-janela { fill: var(--acento); opacity: .55; }
+.leg-janela i { display: inline-block; width: 16px; height: 6px; border-radius: 2px; background: var(--acento); opacity: .55; margin-right: 6px; vertical-align: middle; }
+.preco-ctl { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; margin: 10px 0 14px; }
+.preco-ctl .campo { min-width: 180px; max-width: 280px; flex: 1 1 180px; }
+.seg { border: 1px solid var(--linha-forte); border-radius: var(--raio-p); padding: 4px 12px 8px; display: flex; gap: 14px; margin: 0; }
+.seg legend { font-size: .78rem; font-weight: 700; color: var(--tinta-2); padding: 0 4px; }
+.seg label { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; cursor: pointer; }
+.seg input:disabled + * , .seg label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.lin-destaque th, .lin-destaque td { background: color-mix(in srgb, var(--acento) 10%, var(--superficie)); }
+.lin-destaque th { text-transform: none; letter-spacing: 0; font-size: .86rem; color: var(--tinta); text-align: left; }
+.cel-sub { display: block; font-size: .74rem; color: var(--tinta-2); font-weight: 500; }
+.lista-simples { padding-left: 18px; display: grid; gap: 6px; font-size: .9rem; color: var(--tinta-2); max-width: 78ch; }
+.tabela td.num, .tabela th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tiles-3 { grid-template-columns: 1fr; }
+@media (min-width: 700px) { .tiles-3 { grid-template-columns: repeat(3, 1fr); } }
+.resp-tag { font-size: .68rem; font-weight: 700; color: var(--tinta-2); background: var(--sem-fundo); border-radius: 999px; padding: 1px 8px; }
+.tabela-anos th.ano-cab.sem .ano-g { color: var(--tinta-2); }
+@media (max-width: 520px) { .tiles-precos { grid-template-columns: 1fr; } }

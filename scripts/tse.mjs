@@ -1,5 +1,5 @@
 // Lista oficial de eleitos, a partir dos arquivos abertos do TSE (Tribunal Superior Eleitoral).
-//   Eleições municipais (2024): prefeitos e vereadores.
+//   Eleições municipais (2024): prefeitos. (Vereadores foram retirados do aplicativo.)
 //   Eleições gerais (2022): governadores e deputados estaduais/distritais.
 // Atenção: o TSE informa quem foi ELEITO, não quem está no cargo hoje. Substituições
 // (renúncia, cassação, suplente que assumiu) não aparecem. O site avisa isso.
@@ -12,7 +12,6 @@ export const URL_ZIP = (ano) => `https://cdn.tse.jus.br/estatistica/sead/odsele/
 
 const CARGOS = {
   PREFEITO: 'prefeitos',
-  VEREADOR: 'vereadores',
   GOVERNADOR: 'governadores',
   'DEPUTADO ESTADUAL': 'estaduais',
   'DEPUTADO DISTRITAL': 'estaduais'
@@ -37,7 +36,7 @@ export function lerEleitos(textoCsv, hoje = new Date()) {
   const { ix, linhas } = lerCsv(textoCsv);
   const necessarias = ['DS_CARGO', 'DS_SIT_TOT_TURNO', 'SQ_CANDIDATO', 'NM_CANDIDATO', 'SG_PARTIDO', 'SG_UF'];
   for (const c of necessarias) if (!(c in ix)) throw new Error(`Coluna ${c} não existe no arquivo do TSE; o formato mudou.`);
-  const saida = { prefeitos: [], vereadores: [], governadores: [], estaduais: [] };
+  const saida = { prefeitos: [], governadores: [], estaduais: [] };
   const vistos = new Set();
   for (const l of linhas) {
     const grupo = CARGOS[l[ix.DS_CARGO]];
@@ -58,7 +57,7 @@ export function lerEleitos(textoCsv, hoje = new Date()) {
       instrucao: nomeProprio(l[ix.DS_GRAU_INSTRUCAO]),
       ocupacao: nomeProprio(l[ix.DS_OCUPACAO])
     };
-    if (grupo === 'prefeitos' || grupo === 'vereadores') {
+    if (grupo === 'prefeitos') {
       r.municipio = nomeProprio(l[ix.NM_UE]);
       r.cod = l[ix.SG_UE];
     }
@@ -86,17 +85,16 @@ export function anosVigentes(hoje) {
 /**
  * baixarZip(url) devolve o caminho local do .zip (assim dá para testar sem internet).
  * anos = { municipal, governadores, estaduais }  (veja anosVigentes)
- * Devolve { prefeitos:{UF:[]}, vereadores:{UF:[]}, estaduais:{UF:[]}, governadores:[], avisos:[] }
+ * Devolve { prefeitos:{UF:[]}, estaduais:{UF:[]}, governadores:[], avisos:[] }
  */
 export async function gerarEleitos({ baixarZip, anos, hoje = new Date() }) {
-  const resultado = { prefeitos: {}, vereadores: {}, estaduais: {}, governadores: [], avisos: [], anos };
+  const resultado = { prefeitos: {}, estaduais: {}, governadores: [], avisos: [], anos };
 
   const zipMunicipal = await baixarZip(URL_ZIP(anos.municipal));
   for (const uf of UFS) {
     try {
       const e = lerEleitos(lerDoZip(zipMunicipal, `consulta_cand_${anos.municipal}_${uf}.csv`, 'windows-1252'), hoje);
       resultado.prefeitos[uf] = e.prefeitos;
-      resultado.vereadores[uf] = e.vereadores;
     } catch (erro) {
       if (uf !== 'DF') resultado.avisos.push(`Municipais ${anos.municipal} ${uf}: ${erro.message}`); // o DF não tem eleição municipal
     }
