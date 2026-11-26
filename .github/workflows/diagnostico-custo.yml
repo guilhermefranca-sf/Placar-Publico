@@ -1,0 +1,42 @@
+name: Diagnóstico de custo dos deputados (somente leitura)
+
+# Só roda quando você clica em "Run workflow" na aba Actions. Não tem horário automático
+# e não é disparado por envio de arquivos. Não publica o site e não grava nada no repositório:
+# só lê páginas e arquivos públicos da Câmara e gera um relatório em texto.
+on:
+  workflow_dispatch:
+    inputs:
+      anos:
+        description: "Anos da cota e da remuneração, separados por vírgula (deixe vazio para usar o ano passado e o atual)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Ler as páginas e arquivos da Câmara e gerar o relatório
+        env:
+          DIAG_ANOS: ${{ github.event.inputs.anos }}
+        run: node scripts/diagnostico-custo.mjs
+
+      # O relatório também aparece no resumo da execução (página da execução, rolando até o fim).
+      # A pasta "amostras" guarda cópias das páginas públicas lidas, para eu poder montar a leitura depois.
+      - name: Guardar o relatório para baixar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-custo-deputados
+          path: diagnostico/
+          retention-days: 14
+          if-no-files-found: warn
