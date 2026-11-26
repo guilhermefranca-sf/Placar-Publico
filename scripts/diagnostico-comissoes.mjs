@@ -105,6 +105,8 @@ async function lerArquivo(rotulo, urls, aoLer) {
   return null;
 }
 
+/** Identificador a partir de um número ou de um endereço (.../orgaos/4 -> 4). */
+const idDe = (v) => String(v ?? '').trim().replace(/\/+$/, '').split('/').pop();
 const diaISO = (s) => {
   const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null;
@@ -257,7 +259,7 @@ async function etapaMembros() {
   const cont = { linhas: 0, semIni: 0, iniRuim: 0, semFim: 0, fimRuim: 0 };
   const r = await lerArquivo(`orgaosDeputados (legislatura ${LEGISLATURA})`, [`${base}/orgaosDeputados-L${LEGISLATURA}.csv`, `${base}/orgaosDeputados-${LEGISLATURA}.csv`, `${base}/orgaosDeputados.csv`], (l, ix) => {
     c ||= {
-      dep: achar(ix, ['idDeputado'], /^id.*deputado|deputado.*id$/), org: achar(ix, ['idOrgao'], /^id.*orgao|orgao.*id$/),
+      dep: achar(ix, ['idDeputado', 'uriDeputado'], /^id.*deputado|deputado.*id$/), org: achar(ix, ['idOrgao', 'uriOrgao'], /^id.*orgao|orgao.*id$/),
       cargo: achar(ix, ['titulo', 'cargo', 'nomeCargo', 'nomeTitulo', 'siglaTitulo', 'descricaoTitulo', 'codTitulo', 'codCargo']),
       ini: achar(ix, ['dataInicio', 'dataInicial', 'inicio']), fim: achar(ix, ['dataFim', 'dataFinal', 'fim'])
     };
@@ -269,9 +271,9 @@ async function etapaMembros() {
     cont.linhas++;
     if (ini === null) cont.semIni++; else if (Number.isNaN(ini)) cont.iniRuim++;
     if (fim === null) cont.semFim++; else if (Number.isNaN(fim)) cont.fimRuim++;
-    const org = String(l[ix[c.org]]).trim();
+    const org = idDe(l[ix[c.org]]);
     const lista = membros.get(org) || [];
-    lista.push({ dep: String(l[ix[c.dep]]).trim(), cargo, tit: c.cargo ? !/suplente/i.test(cargo) : null, ini: Number.isNaN(ini) ? null : ini, fim: Number.isNaN(fim) ? null : fim });
+    lista.push({ dep: idDe(l[ix[c.dep]]), cargo, tit: c.cargo ? !/suplente/i.test(cargo) : null, ini: Number.isNaN(ini) ? null : ini, fim: Number.isNaN(fim) ? null : fim });
     membros.set(org, lista);
   });
   if (!r) {
@@ -280,7 +282,7 @@ async function etapaMembros() {
     return;
   }
   if (!c || !c.dep || !c.org) { checar(false, 'Arquivo de membros: não achei as colunas de deputado e de órgão.'); return; }
-  p(`  Colunas usadas: deputado=${c.dep} · órgão=${c.org} · cargo=${c.cargo || '(não achei)'} · início=${c.ini || '(não achei)'} · fim=${c.fim || '(não achei)'}`);
+  p(`  Colunas usadas (o id é tirado do endereço quando a coluna é uri...): deputado=${c.dep} · órgão=${c.org} · cargo=${c.cargo || '(não achei)'} · início=${c.ini || '(não achei)'} · fim=${c.fim || '(não achei)'}`);
   p('  Valores da coluna de cargo (mais comuns):');
   topo(valoresCargo, 15).forEach(([k, v]) => p(`    ${fmt(v).padStart(7)}   ${k}`));
   p(`  Datas: início vazio ${fmt(cont.semIni)} · início em formato desconhecido ${fmt(cont.iniRuim)} · fim vazio (cargo em aberto) ${fmt(cont.semFim)} · fim em formato desconhecido ${fmt(cont.fimRuim)}`);
@@ -320,7 +322,7 @@ async function etapaApiOrgaos() {
   }
 }
 
-function cruzar(rotulo, filtroOrgao) {
+function cruzar(rotulo, filtroOrgao, maxOrgaos = 12) {
   p(`--- ${rotulo} ---`);
   const porDep = new Map(); // dep -> { esp, pres }
   const porOrgao = new Map(); // sigla -> { reunioes, esp, pres }
@@ -328,6 +330,7 @@ function cruzar(rotulo, filtroOrgao) {
   let semMembros = 0;
   let presentesNaoTitulares = 0;
   let presentesTotal = 0;
+  const razoesPorReuniao = []; // fração dos titulares esperados que compareceu, reunião a reunião
   for (const [id, ev] of eventos) {
     if (classeEvento(ev) !== 'reuniao-deliberativa' || ev.data == null) continue;
     const orgs = (orgaosDoEvento.get(id) || []).filter((o) => filtroOrgao(o));
@@ -357,6 +360,7 @@ function cruzar(rotulo, filtroOrgao) {
       if (presentes.has(dep)) a.pres++;
       porDep.set(dep, a);
     }
+    razoesPorReuniao.push([...esperados].filter((d) => presentes.has(d)).length / esperados.size);
     presentesTotal += presentes.size;
     for (const dep of presentes) if (!esperados.has(dep)) presentesNaoTitulares++;
   }
@@ -369,8 +373,10 @@ function cruzar(rotulo, filtroOrgao) {
   p(`  Reuniões esperadas por deputado: ${resumoDistribuicao(deps.map((d) => d.esp), 1, 0)}`);
   p(`  Comparecimento (% das reuniões esperadas) entre os com ${MIN_REUNIOES}+ reuniões: ${resumoDistribuicao(comMin.map((d) => d.pres / d.esp), 100, 0)}`);
   p(`  Com 100% de comparecimento: ${fmt(comMin.filter((d) => d.pres === d.esp).length)} · abaixo de 50%: ${fmt(comMin.filter((d) => d.pres / d.esp < 0.5).length)}`);
+  p(`  Comparecimento dos titulares por reunião (% dos esperados): ${resumoDistribuicao(razoesPorReuniao, 100, 0)}`);
+  p(`  Reuniões com menos de 10% dos titulares presentes: ${fmt(razoesPorReuniao.filter((r) => r < 0.1).length)} de ${fmt(razoesPorReuniao.length)} (${pct(razoesPorReuniao.filter((r) => r < 0.1).length, razoesPorReuniao.length)})`);
   p('  Órgãos com mais reuniões deliberativas: reuniões · comparecimento dos titulares');
-  [...porOrgao.entries()].sort((a, b) => b[1].reunioes - a[1].reunioes).slice(0, 12).forEach(([k, v]) => p(`    ${fmt(v.reunioes).padStart(5)} · ${pct(v.pres, v.esp).padStart(6)}   ${k}`));
+  [...porOrgao.entries()].sort((a, b) => b[1].reunioes - a[1].reunioes).slice(0, maxOrgaos).forEach(([k, v]) => p(`    ${fmt(v.reunioes).padStart(5)} · ${pct(v.pres, v.esp).padStart(6)}   ${k}`));
   return { deps: deps.length, comMin: comMin.length, reunioes };
 }
 
@@ -386,7 +392,7 @@ async function etapaCruzamento() {
   let perm = null;
   if (tipoDoOrgao.size) {
     p();
-    perm = cruzar('Somente órgãos cujo tipo contém "Permanente"', (o) => /permanente/i.test(tipoDoOrgao.get(o.id) || ''));
+    perm = cruzar('Somente Comissões Permanentes (tipo exato "Comissão Permanente")', (o) => tipoDoOrgao.get(o.id) === 'Comissão Permanente', 40);
   }
   const alvo = perm && perm.deps ? perm : todos;
   const ok = alvo.deps > 0 && alvo.comMin / alvo.deps >= 0.6;
