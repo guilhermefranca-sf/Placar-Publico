@@ -23,24 +23,26 @@ const DIAS_JANELA = 89;         // a API recusa intervalos maiores que 3 meses
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const NOMES_UF = { AC:'Acre', AL:'Alagoas', AP:'Amapá', AM:'Amazonas', BA:'Bahia', CE:'Ceará', DF:'Distrito Federal', ES:'Espírito Santo', GO:'Goiás', MA:'Maranhão', MT:'Mato Grosso', MS:'Mato Grosso do Sul', MG:'Minas Gerais', PA:'Pará', PB:'Paraíba', PR:'Paraná', PE:'Pernambuco', PI:'Piauí', RJ:'Rio de Janeiro', RN:'Rio Grande do Norte', RS:'Rio Grande do Sul', RO:'Rondônia', RR:'Roraima', SC:'Santa Catarina', SP:'São Paulo', SE:'Sergipe', TO:'Tocantins' };
 
-/* Os cinco cargos. "nota: true" = existe nota calculada com dados oficiais. */
+/* Os cargos do Placar. "nota: true" = existe nota calculada com dados oficiais.
+   Na v8 o Placar tem deputados federais, senadores, governadores e presidente.
+   Prefeitos, vereadores e deputados estaduais saíram (ficam numa página própria, mais adiante). */
 const CARGOS = {
   federais: {
     rotulo: 'Deputados federais', singular: 'Deputado federal', nota: true,
-    lead: 'Uso da cota parlamentar, votações nominais, presença no Plenário e projetos aprovados. Os números vêm dos dados abertos da Câmara e são recalculados todo dia.'
+    lead: 'Projetos aprovados, votações nominais, presença no Plenário, presença em comissões e custo para os cofres públicos. Os números vêm dos dados abertos da Câmara e do Portal da Transparência da Câmara, e são recalculados todo dia.'
+  },
+  senadores: {
+    rotulo: 'Senadores', singular: 'Senador(a)', nota: true,
+    lead: 'Os mesmos critérios dos deputados federais, no que as fontes do Senado permitem medir. Nesta versão o Placar lê o custo para os cofres públicos (a cota CEAPS); presença, votações, projetos e comissões aparecem como "Dado não encontrado ou não confirmado" e ficam fora da conta, sem virar nota zero. O índice só é calculado quando pelo menos 2 critérios estão confirmados.'
   },
   governadores: {
     rotulo: 'Governadores', singular: 'Governador(a)', nota: true,
-    lead: 'O índice de serviços públicos compara cada estado com os demais em saúde, educação, segurança e saneamento (infraestrutura ainda sem fonte). É um índice parcial: mostra de quantas áreas ele é feito. Gasto com pessoal e dívida seguem no perfil, só como informação.'
-  },
-  prefeitos: {
-    rotulo: 'Prefeitos', singular: 'Prefeito(a)', nota: true,
-    lead: 'O índice de serviços públicos compara cada município com os do mesmo estado em saúde, educação e saneamento (segurança não se aplica a prefeituras; infraestrutura ainda sem fonte). É um índice parcial: mostra de quantas áreas ele é feito. Gasto com pessoal e dívida seguem no perfil, só como informação.'
-  },
-  estaduais: {
-    rotulo: 'Deputados estaduais', singular: 'Deputado(a) estadual', nota: true,
-    lead: 'Lista dos eleitos de cada estado (e do Distrito Federal). Só as assembleias cujos dados o Placar consegue ler têm índice, e ele é parcial. As demais aparecem sem índice, com o motivo.'
+    lead: 'O índice de serviços públicos compara cada estado com os demais em saúde, educação, segurança e saneamento. É um índice parcial: mostra de quantas áreas ele é feito. Gasto com pessoal e dívida seguem no perfil, só como informação.'
   }
+};
+/* Cargos que saíram do Placar na v8. Endereços antigos mostram um aviso, em vez de erro. */
+const CARGOS_RETIRADOS = {
+  prefeitos: 'Prefeitos', vereadores: 'Vereadores', estaduais: 'Deputados estaduais'
 };
 // Tipos de proposição: PL, PEC etc. As siglas fora desta lista aparecem como vieram da API.
 const NOMES_TIPO = {
@@ -54,9 +56,9 @@ const NOMES_TIPO = {
 const SIGLAS_PROJETO = new Set(['PL', 'PLP', 'PEC', 'PDL', 'PRC', 'MPV', 'PLV', 'PLN', 'PFC']);
 const SIGLAS_REQUERIMENTO = new Set(['REQ', 'RIC', 'INC', 'RCP']);
 
-/* Nome do índice em cada cargo. Governadores e prefeitos: serviços públicos em cinco áreas; presidente: economia; estaduais: parcial. */
-const nomeIndice = cargo => ({ governadores: 'índice de serviços públicos', prefeitos: 'índice de serviços públicos', executivos: 'índice de serviços públicos', presidente: 'índice econômico', estaduais: 'índice parcial' }[cargo] || 'índice');
-const ORDEM_CARGOS = ['federais', 'governadores', 'prefeitos', 'estaduais'];
+/* Nome do índice em cada cargo. Governadores: serviços públicos em cinco áreas; presidente: economia. */
+const nomeIndice = cargo => ({ governadores: 'índice de serviços públicos', executivos: 'índice de serviços públicos', presidente: 'índice econômico' }[cargo] || 'índice');
+const ORDEM_CARGOS = ['federais', 'senadores', 'governadores'];
 
 /* ---------- 2. Utilitários ---------- */
 
@@ -291,8 +293,8 @@ const indisponivel = (extra = '') => html`<div class="indisp" role="note">${icon
    oficial   = valor que a fonte oficial publica, sem conta nossa
    calculado = conta feita pelo Placar Público sobre dados oficiais (proporção, soma, média)
    indice    = o índice de 0 a 100, que é uma regra nossa, explicada na Metodologia   */
-const NOMES_SELO = { oficial: 'Dado oficial', calculado: 'Calculado', indice: 'Índice do Placar' };
-const selo = (origem, natureza = '', rotuloIndice = '') => html`<span class="selo selo-${origem}" title="${origem === 'oficial' ? 'Valor publicado pela fonte oficial, sem conta nossa.' : origem === 'calculado' ? 'Conta feita pelo Placar Público com dados oficiais. A regra está na Metodologia.' : 'Índice criado pelo Placar Público. Não é um dado oficial.'}">${rotuloIndice && origem === 'indice' ? rotuloIndice : NOMES_SELO[origem]}${natureza ? ' · ' + natureza : ''}</span>`;
+const NOMES_SELO = { oficial: 'Dado oficial', calculado: 'Calculado', indice: 'Índice do Placar', independente: 'Fonte independente' };
+const selo = (origem, natureza = '', rotuloIndice = '') => html`<span class="selo selo-${origem}" title="${origem === 'oficial' ? 'Valor publicado pela fonte oficial, sem conta nossa.' : origem === 'calculado' ? 'Conta feita pelo Placar Público com dados oficiais. A regra está na Metodologia.' : origem === 'independente' ? 'Valor publicado por instituto, organização ou veículo independente, não por órgão do governo. O Placar conferiu a publicação e mostra o link, a edição e a data da conferência.' : 'Índice criado pelo Placar Público. Não é um dado oficial.'}">${rotuloIndice && origem === 'indice' ? rotuloIndice : NOMES_SELO[origem]}${natureza ? ' · ' + natureza : ''}</span>`;
 
 const fonteLinha = (fonte, atualizadoEm, url = '') => html`<p class="fonte-linha">${icone('arquivo', 14)}<span>Fonte: ${url ? html`<a href="${url}" target="_blank" rel="noopener">${fonte}</a>` : fonte}${atualizadoEm ? ` · atualizado em ${dataHoraBR(atualizadoEm)}` : ''}</span></p>`;
 
@@ -315,8 +317,13 @@ const notaHtml = (n, grande = false) => anel(n, { tam: grande ? 96 : 48, esp: gr
 
 /* Abas de cada tipo de perfil. [chave, rótulo]. Endereços antigos continuam funcionando. */
 const ABAS_FEDERAL = [['visao', 'Visão geral'], ['historico', 'Histórico de mandatos'], ['projetos', 'Projetos'], ['votos', 'Como votou?'], ['emendas', 'Emendas'], ['gastos', 'Gastos'], ['fiscalizacao', 'Fiscalização'], ['noticias', 'Notícias'], ['fontes', 'Fontes']];
-const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['servicos', 'Serviços básicos'], ['saneamento', 'Saneamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['infraestrutura', 'Infraestrutura'], ['obras', 'Obras'], ['economia', 'Economia'], ['orcamento', 'Orçamento'], ['transparencia', 'Transparência'], ['fontes', 'Fontes']];
+/* Senador: sem "Como votou?" (o Placar ainda não lê as votações do Senado com fonte conferida). */
+const ABAS_SENADOR = [['visao', 'Visão geral'], ['fontes', 'Fontes']];
+const ABAS_ANTIGAS_SENADOR = { votos: 'visao', gastos: 'visao', nota: 'visao', votacoes: 'visao', presenca: 'visao' };
+/* Governador: sem Infraestrutura nem Obras (não há como medir com dado confiável). */
+const ABAS_EXECUTIVO = [['visao', 'Visão geral'], ['servicos', 'Serviços básicos'], ['saneamento', 'Saneamento'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['economia', 'Economia'], ['orcamento', 'Orçamento'], ['transparencia', 'Transparência'], ['fontes', 'Fontes']];
 const ABAS_ANTIGAS = { nota: 'visao', votacoes: 'votos', presenca: 'visao' };
-// O presidente tem uma aba a mais, logo depois de Economia: "Preços no Brasil" (gasolina, dólar e cesta básica).
-const ABAS_PRESIDENTE = [...ABAS_EXECUTIVO.slice(0, ABAS_EXECUTIVO.findIndex(a => a[0] === 'economia') + 1), ['precos', 'Preços no Brasil'], ...ABAS_EXECUTIVO.slice(ABAS_EXECUTIVO.findIndex(a => a[0] === 'economia') + 1)];
-const ABAS_ANTIGAS_EXECUTIVO = { gastos: 'orcamento', contas: 'transparencia', planejamento: 'orcamento' };
+/* Presidente: sem Serviços básicos, Saneamento, Infraestrutura e Obras (competência de estados e municípios,
+   ou sem como medir). Segurança, Saúde e Educação mostram o Brasil no mundo. "Preços no Brasil" vem depois de Economia. */
+const ABAS_PRESIDENTE = [['visao', 'Visão geral'], ['saude', 'Saúde'], ['educacao', 'Educação'], ['seguranca', 'Segurança'], ['economia', 'Economia'], ['precos', 'Preços no Brasil'], ['orcamento', 'Orçamento'], ['transparencia', 'Transparência'], ['fontes', 'Fontes']];
+const ABAS_ANTIGAS_EXECUTIVO = { gastos: 'orcamento', contas: 'transparencia', planejamento: 'orcamento', infraestrutura: 'visao', obras: 'visao' };

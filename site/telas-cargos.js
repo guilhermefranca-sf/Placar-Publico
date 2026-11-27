@@ -3,8 +3,9 @@
 /* =====================================================================
    Placar Público — Início
    Menus, faixas de aviso, escolha do cargo, destaques e lista de pessoas
-   com o anel do índice. Deputados estaduais: lista por estado, com índice
-   parcial onde a Assembleia publica dados e o motivo onde não publica.
+   com o anel do índice. Cargos: deputados federais, senadores e governadores
+   (o presidente tem tela própria). A lista de deputados estaduais está
+   arquivada em arquivo/telas-deputados-estaduais.js.txt.
    ===================================================================== */
 
 /* ---------- Menus (topo no computador, embaixo no celular) ---------- */
@@ -38,7 +39,7 @@ function montarFaixas() {
       <a href="#/fontes">Como ver os dados reais</a>.</div></div>`);
   } else {
     const f = (DADOS.meta && DADOS.meta.fontes) || {};
-    const nomes = { camara: 'Câmara dos Deputados', tse: 'TSE (lista de eleitos)', siconfi: 'Tesouro Nacional (contas públicas)', historico: 'Câmara (histórico de mandatos)', administracoes: 'TSE (gestões dos últimos 48 meses)', ibge: 'IBGE (população, PIB e Censo)', presidente: 'Presidente (IBGE e Banco Central)', precos: 'Preços no Brasil (ANP, Banco Central e DIEESE)', series: 'Tesouro Nacional (contas por ano)' };
+    const nomes = { camara: 'Câmara dos Deputados', tse: 'TSE (lista de eleitos)', siconfi: 'Tesouro Nacional (contas públicas)', historico: 'Câmara (histórico de mandatos)', administracoes: 'TSE (gestões dos últimos 48 meses)', ibge: 'IBGE (população, PIB e Censo)', presidente: 'Presidente (IBGE e Banco Central)', precos: 'Preços no Brasil (ANP, Banco Central e DIEESE)', series: 'Tesouro Nacional (contas por ano)', custo: 'Portal da Transparência da Câmara (custo dos deputados)', mundo: 'Banco Mundial (Brasil no mundo)', senado: 'Senado Federal' };
     const falhas = Object.entries(nomes).filter(([k]) => f[k] && f[k].ok === false);
     if (falhas.length) {
       partes.push(html`<div class="faixa" role="status"><div class="cx">
@@ -55,7 +56,7 @@ function montarFaixas() {
 
 /* ---------- Pessoas nas listas ---------- */
 
-const linkItem = (cargo, it) => (cargo === 'federais' ? `#/federais/${it.id}` : `#/${cargo}/${it.uf}/${it.id}`);
+const linkItem = (cargo, it) => (cargo === 'federais' || cargo === 'senadores' ? `#/${cargo}/${it.id}` : `#/${cargo}/${it.uf}/${it.id}`);
 const cmpNome = (a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR');
 
 function avatarHtml(it) {
@@ -66,6 +67,10 @@ function avatarHtml(it) {
 
 const metaPessoa = it => `${it.partido || 'Sem partido'} · ${it.municipio ? it.municipio + '/' : ''}${it.uf}`;
 
+/* Senadores sem índice (só o custo foi confirmado): mostra o custo por mês no lugar do anel vazio. */
+const custoPorMes = it => { const c = it.extra && it.extra.custo; return c && !c.poucosMeses && c.porMes != null ? c.porMes : null; };
+const chipCusto = it => { const v = custoPorMes(it); return v == null ? html`<span class="pessoa-custo sem">sem custo<small>${MSG_INDISPONIVEL}</small></span>` : html`<span class="pessoa-custo">${reaisCurto(v)}<small>por mês em CEAPS</small></span>`; };
+
 function linhaPessoa(cargo, it) {
   return html`<li><a class="pessoa" href="${linkItem(cargo, it)}">
     ${avatarHtml(it)}
@@ -73,7 +78,7 @@ function linhaPessoa(cargo, it) {
       <span class="pessoa-nome">${it.nome}</span>
       <span class="pessoa-meta">${metaPessoa(it)}</span>
     </span>
-    ${anel(it.nota, { tam: 48, esp: 5 })}
+    ${cargo === 'senadores' && it.nota == null ? chipCusto(it) : anel(it.nota, { tam: 48, esp: 5 })}
     <span class="ico-seta">${icone('seta', 18)}</span>
   </a></li>`;
 }
@@ -90,7 +95,10 @@ function cartaoDestaque(cargo, it) {
 
 /* ---------- Cabeçalho do Início: título e escolha do cargo ---------- */
 
-const CARGOS_EM_BREVE = [['Senadores', 'Mesmo painel dos deputados federais, com dados abertos do Senado.'], ['Presidentes da Câmara e do Senado', 'Aba de gestão da Casa: sessões, pauta e resultados.']];
+const CARGOS_EM_BREVE = [['Presidentes da Câmara e do Senado', 'Aba de gestão da Casa: sessões, pauta e resultados.']];
+
+/* Senadores só aparecem como aba quando o arquivo de dados deles existe (ou no modo demonstração). */
+const cargoDisponivel = k => k !== 'senadores' || DADOS.demo || !!((DADOS.meta && DADOS.meta.cargos) || {}).senadores;
 
 function cabecalhoInicio(cargo) {
   const metaCargos = (DADOS.meta && DADOS.meta.cargos) || {};
@@ -103,10 +111,22 @@ function cabecalhoInicio(cargo) {
       <label class="busca-grande" aria-label="Buscar pelo nome">${icone('busca', 20)}<input id="busca-topo" type="search" placeholder="Buscar pelo nome" autocomplete="off" aria-controls="r-lista"></label>
     </section>
     <nav class="cargos-linha chips chips-rolagem" aria-label="Cargos">
-      ${ORDEM_CARGOS.map(k => html`<a class="chip" href="#/${k}" aria-current="${k === cargo ? 'true' : 'false'}">${CARGOS[k].rotulo.replace('Deputados ', 'Dep. ')}${metaCargos[k] && metaCargos[k].total != null ? html`<b>${fmtNum.format(metaCargos[k].total)}</b>` : ''}</a>`)}
+      ${ORDEM_CARGOS.filter(cargoDisponivel).map(k => html`<a class="chip" href="#/${k}" aria-current="${k === cargo ? 'true' : 'false'}">${CARGOS[k].rotulo.replace('Deputados ', 'Dep. ')}${metaCargos[k] && metaCargos[k].total != null ? html`<b>${fmtNum.format(metaCargos[k].total)}</b>` : ''}</a>`)}
       <a class="chip" href="#/presidente" aria-current="${cargo === 'presidente' ? 'true' : 'false'}">Presidente</a>
-      <span class="chip chip-bloq" title="Em preparação">${icone('cadeado', 15)}Senadores<b>em breve</b></span>
+      ${cargoDisponivel('senadores') ? '' : html`<span class="chip chip-bloq" title="Em preparação">${icone('cadeado', 15)}Senadores<b>em breve</b></span>`}
     </nav>`;
+}
+
+/* Endereço antigo de um cargo que saiu do Placar (prefeitos, vereadores, deputados estaduais). */
+function viewCargoRetirado(cargo) {
+  document.title = 'Placar Público';
+  mostrar(app, html`${cabecalhoInicio('federais')}
+    <section class="cartao cartao-aviso">
+      <h2>${CARGOS_RETIRADOS[cargo]} saíram do Placar Público</h2>
+      <p>A partir da versão 8, o Placar acompanha deputados federais, senadores, governadores e o presidente da República. Prefeitos, vereadores e deputados estaduais ficaram de fora para o índice de cada um ser feito com dados que o Placar consegue conferir. É possível que uma página própria para eles volte mais adiante.</p>
+      <p><a class="botao" href="#/federais">Ver deputados federais</a></p>
+    </section>`);
+  ligarBuscaTopo('federais');
 }
 
 /* ---------- Tela de um cargo ---------- */
@@ -119,7 +139,7 @@ async function viewCargo(cargo, token, inicio) {
     ${esqueletoLinhas(6)}`);
   ligarBuscaTopo(cargo);
 
-  const arquivo = { federais: 'federais.json', governadores: 'governadores.json', prefeitos: 'ranking-prefeitos.json' }[cargo];
+  const arquivo = { federais: 'federais.json', senadores: 'senadores.json', governadores: 'governadores.json' }[cargo];
   let dados = null;
   if (arquivo) {
     try { dados = await lerArquivo(arquivo); } catch (e) {
@@ -131,8 +151,7 @@ async function viewCargo(cargo, token, inicio) {
   }
   if (token !== rotaToken) return;
 
-  if (cargo === 'estaduais') montarEstaduais(cargo, token);
-  else montarCargoComNota(cargo, dados);
+  montarCargoComNota(cargo, dados);
 }
 
 // A busca do topo leva para a lista do cargo escolhido, filtrando pelo que foi digitado.
@@ -146,14 +165,15 @@ function ligarBuscaTopo(cargo) {
 function resumoCargo(cargo, dados) {
   const m = ((DADOS.meta.cargos || {})[cargo]) || {};
   const f = DADOS.meta.fontes || {};
-  const fonte = cargo === 'federais' ? f.camara : f.siconfi;
+  const fonte = cargo === 'federais' ? f.camara : cargo === 'senadores' ? f.senado : f.siconfi;
   const total = dados.total ?? m.total;
   const comNota = dados.comNota ?? m.comNota;
   const dia = fonte && fonte.atualizadoEm ? new Date(fonte.atualizadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—';
-  const base = cargo === 'federais' ? `Câmara, ${periodoAvaliado(dados, true)}` : `Indicadores públicos dos últimos 48 meses`;
+  const legislador = cargo === 'federais' || cargo === 'senadores';
+  const base = cargo === 'federais' ? `Câmara, ${periodoAvaliado(dados, true)}` : cargo === 'senadores' ? `Senado, ${periodoAvaliado(dados, true)}` : `Indicadores públicos dos últimos 48 meses`;
   return html`<section class="resumo" aria-label="Resumo">
-    <div class="resumo-item"><span>${cargo === 'federais' ? 'Em exercício' : 'Eleitos'}</span><strong>${fmtNum.format(total)}</strong><small>${total - comNota ? `${fmtNum.format(comNota)} com índice` : 'todos com índice'}</small></div>
-    <div class="resumo-item"><span>${cargo === 'federais' ? 'Índice médio' : 'Índice de serviços públicos médio'}</span><strong>${fmtNota(m.media)}</strong><small>${cargo === 'federais' ? 'de 0 a 100' : 'parcial, de 0 a 100 (média de quem tem índice)'}</small></div>
+    <div class="resumo-item"><span>${legislador ? 'Em exercício' : 'Eleitos'}</span><strong>${fmtNum.format(total)}</strong><small>${total - comNota ? `${fmtNum.format(comNota)} com índice` : 'todos com índice'}</small></div>
+    <div class="resumo-item"><span>${legislador ? 'Índice médio' : 'Índice de serviços públicos médio'}</span><strong>${fmtNota(m.media)}</strong><small>${cargo === 'senadores' && !comNota ? 'ainda não calculado' : legislador ? 'de 0 a 100' : 'parcial, de 0 a 100 (média de quem tem índice)'}</small></div>
     <div class="resumo-item"><span>Atualizado em</span><strong>${dia}</strong><small>${base}</small></div>
   </section>`;
 }
@@ -170,6 +190,8 @@ function montarCargoComNota(cargo, dados) {
   mostrar(app, html`${cabecalhoInicio(cargo)}
     ${resumoCargo(cargo, dados)}
     <p class="nota">${c.lead}</p>
+    ${cargo === 'senadores' && !dados.comNota ? html`<section class="cartao cartao-aviso"><h2>O índice dos senadores ainda não foi calculado</h2>
+      <p>Hoje o Placar confirma ${dados.comCusto != null ? `o custo de ${fmtNum.format(dados.comCusto)} de ${fmtNum.format(dados.total)} senadores` : 'só o custo para os cofres públicos'} (cota CEAPS). Presença, votações, projetos e comissões do Senado ainda não têm leitura conferida e aparecem como "${MSG_INDISPONIVEL}". Um índice feito com um único critério seria só um ranking de custo, e o Placar não o chama de índice. Veja a lista abaixo, ordenada pelo nome, ou ordene pelo menor custo por mês. <a href="#/metodologia">O que falta e por quê</a>.</p></section>` : ''}
     ${n ? html`<section aria-label="Destaques">
       <div class="destaques-topo">
         <h2>Destaques</h2>
@@ -184,7 +206,7 @@ function montarCargoComNota(cargo, dados) {
     <section aria-label="Lista completa">
       <div class="lista-topo"><h2>Lista completa</h2><span class="contagem" id="r-contagem" aria-live="polite"></span></div>
       <div class="filtros">
-        <label class="campo"><span>${cargo === 'prefeitos' ? 'Nome ou município' : 'Nome'}</span>
+        <label class="campo"><span>Nome</span>
           <input id="r-busca" type="search" placeholder="Digite parte do nome" autocomplete="off"></label>
         <label class="campo"><span>Estado</span>
           <select id="r-uf"><option value="">Todos</option>${UFS.map(u => html`<option value="${u}">${u}</option>`)}</select></label>
@@ -195,14 +217,14 @@ function montarCargoComNota(cargo, dados) {
             <option value="maior">Maior índice primeiro</option>
             <option value="menor">Menor índice primeiro</option>
             <option value="nome">Nome (A a Z)</option>
+            ${cargo === 'senadores' ? html`<option value="custo">Menor custo por mês primeiro</option><option value="custo-maior">Maior custo por mês primeiro</option>` : ''}
           </select></label>
       </div>
       <ul class="lista-pessoas" id="r-lista"></ul>
       <div class="mais-linha" id="r-mais"></div>
-      <p class="nota">${c.singular === 'Deputado federal'
+      <p class="nota">${cargo === 'federais' || cargo === 'senadores'
         ? 'Quem aparece sem índice não tem dados suficientes no período avaliado (por exemplo, assumiu o mandato há poucas semanas). Abra o perfil para ver o motivo.'
-        : 'Quem aparece sem índice não tem dados suficientes das áreas avaliadas (os dados do IBGE chegam aos poucos), ou o mandato atual começou há pouco e ainda não há dado dele. Abra o perfil para ver o motivo exato. Quem tem índice parcial mostra, no perfil, de quantas das cinco áreas ele é feito.'}
-        A lista de eleitos vem do TSE e não registra substituições depois da eleição. <a href="#/metodologia">Como o ${nomeIndice(cargo)} é calculado</a>.</p>
+        : 'Quem aparece sem índice não tem dados suficientes das áreas avaliadas (os dados do IBGE chegam aos poucos), ou o mandato atual começou há pouco e ainda não há dado dele. Abra o perfil para ver o motivo exato. Quem tem índice parcial mostra, no perfil, de quantas das cinco áreas ele é feito. A lista de eleitos vem do TSE e não registra substituições depois da eleição, mas o perfil avisa quando o Placar registra uma troca.'} <a href="#/metodologia">Como o ${nomeIndice(cargo)} é calculado</a>.</p>
     </section>`);
 
   const desenharDestaques = () => {
@@ -217,6 +239,7 @@ function montarCargoComNota(cargo, dados) {
   desenharDestaques();
 
   const f = estado.filtros[cargo] || (estado.filtros[cargo] = { busca: '', uf: '', partido: '', ordem: 'maior', limite: 50 });
+  if (cargo === 'senadores' && !dados.comNota && f.ordem === 'maior') f.ordem = 'nome'; // sem índice, a lista começa pelo nome
   $('#r-busca').value = f.busca;
   $('#busca-topo').value = f.busca;
   $('#r-uf').value = f.uf;
@@ -226,7 +249,9 @@ function montarCargoComNota(cargo, dados) {
   const ORDENS = {
     maior: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || cmpNome(a, b),
     menor: (a, b) => ((a.nota == null) - (b.nota == null)) || (b.rank ?? 0) - (a.rank ?? 0) || cmpNome(a, b),
-    nome: cmpNome
+    nome: cmpNome,
+    custo: (a, b) => (custoPorMes(a) ?? 1e15) - (custoPorMes(b) ?? 1e15) || cmpNome(a, b),
+    'custo-maior': (a, b) => ((custoPorMes(a) == null) - (custoPorMes(b) == null)) || (custoPorMes(b) ?? 0) - (custoPorMes(a) ?? 0) || cmpNome(a, b)
   };
   const desenhar = () => {
     const q = semAcento(f.busca.trim());
@@ -249,94 +274,4 @@ function montarCargoComNota(cargo, dados) {
   $('#r-ordem').addEventListener('change', e => { f.ordem = e.target.value; f.limite = 50; desenhar(); });
   $('#r-mais').addEventListener('click', e => { if (e.target.closest('[data-mais]')) { f.limite += 100; desenhar(); } });
   desenhar();
-}
-
-/* ---------- Deputados estaduais: lista por estado, com índice parcial onde a Assembleia publica dados ---------- */
-
-async function montarEstaduais(cargo, token) {
-  const c = CARGOS[cargo];
-  const meta = (DADOS.meta && DADOS.meta.cargos && DADOS.meta.cargos.estaduais) || {};
-  mostrar(app, html`${cabecalhoInicio(cargo)}
-    <section class="cartao" aria-label="Como funciona o índice dos deputados estaduais">
-      <h2>${c.rotulo}: índice parcial <span class="em-breve">depende de cada Assembleia</span></h2>
-      <p class="painel-sub" style="margin:8px 0 0">${c.lead} O deputado é comparado só com os colegas da <strong>mesma Assembleia</strong>, e a posição também é só dentro dela. ${meta.comNota != null ? html`Hoje ${fmtNum.format(meta.comNota)} de ${fmtNum.format(meta.total)} têm índice.` : ''} <a href="#/metodologia">Como é calculado</a> · <a href="#/fontes">Situação de cada Assembleia</a></p>
-    </section>
-    <section class="secao" aria-label="Lista de eleitos">
-      <div class="filtros filtros-auto">
-        <label class="campo"><span>Estado</span>
-          <select id="s-uf">${UFS.map(u => html`<option value="${u}" ${u === estado.uf ? 'selected' : ''}>${u} · ${NOMES_UF[u]}</option>`)}</select></label>
-        <label class="campo"><span>Nome</span><input id="s-busca" type="search" placeholder="Digite parte do nome" autocomplete="off"></label>
-        <label class="campo"><span>Partido</span><select id="s-partido"><option value="">Todos</option></select></label>
-        <label class="campo"><span>Ordem</span>
-          <select id="s-ordem"><option value="maior">Maior índice primeiro</option><option value="menor">Menor índice primeiro</option><option value="nome">Nome (A a Z)</option></select></label>
-      </div>
-      <p class="contagem" id="s-contagem" aria-live="polite" style="margin-top:12px"></p>
-      <div id="s-aviso"></div>
-      <div id="s-corpo">${esqueletoLinhas(4)}</div>
-      <div class="mais-linha" id="s-mais"></div>
-      <p class="nota" id="s-nota"></p>
-    </section>`);
-  $('#busca-topo').closest('label').hidden = true;
-
-  const vista = { uf: estado.uf, busca: '', partido: '', ordem: 'maior', limite: 60, dado: null };
-  const vivo = () => token === rotaToken;
-  const ORDENS = {
-    maior: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || cmpNome(a, b),
-    menor: (a, b) => ((a.nota == null) - (b.nota == null)) || (b.rank ?? 0) - (a.rank ?? 0) || cmpNome(a, b),
-    nome: cmpNome
-  };
-
-  async function carregarUf() {
-    mostrar($('#s-corpo'), esqueletoLinhas(4));
-    $('#s-contagem').textContent = '';
-    mostrar($('#s-aviso'), html``);
-    try {
-      vista.dado = await lerArquivo(`${cargo}-${vista.uf}.json`);
-    } catch (e) {
-      if (!vivo()) return;
-      vista.dado = null;
-      mostrar($('#s-corpo'), html`<p class="vazio">Ainda não há a lista deste estado. Ela aparece depois da próxima atualização diária.</p>`);
-      return;
-    }
-    if (!vivo()) return;
-    const itens = vista.dado.itens;
-    const partidos = [...new Set(itens.map(i => i.partido).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    mostrar($('#s-partido'), html`<option value="">Todos</option>${partidos.map(p => html`<option value="${p}">${p}</option>`)}`);
-    vista.partido = '';
-    const comNota = itens.filter(i => i.nota != null).length;
-    const motivo = (itens.find(i => i.nota == null && i.motivo) || {}).motivo;
-    mostrar($('#s-aviso'), comNota
-      ? html`<p class="nota">${selo('indice', '', 'Índice parcial')} ${fmtNum.format(comNota)} de ${fmtNum.format(itens.length)} deputados desta Assembleia têm índice. É parcial: usa só o que a Assembleia publica e o Placar consegue ler (abra o perfil para ver o que entrou).</p>`
-      : html`<p class="nota">Nenhum deputado desta Assembleia tem índice por enquanto. ${motivo || ''}</p>`);
-    mostrar($('#s-nota'), html`${selo('oficial')} A lista vem do TSE e mostra quem foi eleito em ${vista.dado.ano}. Substituições depois da eleição (suplentes que assumiram, renúncias, cassações) não aparecem.`);
-    desenhar();
-  }
-
-  function desenhar() {
-    if (!vista.dado) return;
-    const q = semAcento(vista.busca.trim());
-    const lista = vista.dado.itens.filter(i =>
-      (!vista.partido || i.partido === vista.partido) &&
-      (!q || semAcento(i.nome).includes(q) || semAcento(i.urna || '').includes(q))).sort(ORDENS[vista.ordem]);
-    const visiveis = lista.slice(0, vista.limite);
-    $('#s-contagem').textContent = plural(lista.length, 'eleito', 'eleitos');
-    mostrar($('#s-corpo'), visiveis.length ? html`<ul class="lista-pessoas">${visiveis.map(i => html`<li>
-        <a class="pessoa ${i.nota == null ? 'pessoa-sem' : ''}" href="#/${cargo}/${i.uf}/${i.id}">
-          <span class="avatar" aria-hidden="true">${iniciais(i.nome)}</span>
-          <span class="pessoa-info"><span class="pessoa-nome">${i.nome}</span>
-          <span class="pessoa-meta">${i.partido || 'Sem partido'}${i.nota != null && i.rank != null ? ` · ${fmtNum.format(i.rank)}º na Assembleia` : (i.nota == null ? ' · sem índice' : '')}</span></span>
-          ${i.nota != null ? anel(i.nota, { tam: 48, esp: 5 }) : ''}
-          <span class="ico-seta">${icone('seta', 18)}</span>
-        </a></li>`)}</ul>` : html`<p class="vazio">Ninguém encontrado com esses filtros.</p>`);
-    mostrar($('#s-mais'), lista.length > vista.limite
-      ? html`<button class="botao" type="button" data-mais>Mostrar mais (${fmtNum.format(lista.length - vista.limite)} restantes)</button>` : html``);
-  }
-
-  $('#s-uf').addEventListener('change', e => { vista.uf = e.target.value; estado.uf = vista.uf; salvarPref('uf', vista.uf); vista.limite = 60; carregarUf(); });
-  $('#s-busca').addEventListener('input', e => { vista.busca = e.target.value; vista.limite = 60; desenhar(); });
-  $('#s-partido').addEventListener('change', e => { vista.partido = e.target.value; vista.limite = 60; desenhar(); });
-  $('#s-ordem').addEventListener('change', e => { vista.ordem = e.target.value; vista.limite = 60; desenhar(); });
-  $('#s-mais').addEventListener('click', e => { if (e.target.closest('[data-mais]')) { vista.limite += 120; desenhar(); } });
-  $('#s-uf').value = vista.uf;
-  carregarUf();
 }

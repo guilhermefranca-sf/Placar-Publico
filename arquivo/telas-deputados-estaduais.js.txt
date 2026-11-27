@@ -1,0 +1,94 @@
+/* ARQUIVADO NA v8 — não é carregado pelo site.
+   Tela da lista de deputados estaduais (índice parcial por Assembleia). Guardada para a página própria de prefeitos,
+   vereadores e deputados estaduais, que pode vir mais adiante. Para reativar: colar de volta em site/telas-cargos.js,
+   recolocar 'estaduais' em CARGOS e ORDEM_CARGOS (site/base.js) e na rota do roteador. */
+
+/* ---------- Deputados estaduais: lista por estado, com índice parcial onde a Assembleia publica dados ---------- */
+
+async function montarEstaduais(cargo, token) {
+  const c = CARGOS[cargo];
+  const meta = (DADOS.meta && DADOS.meta.cargos && DADOS.meta.cargos.estaduais) || {};
+  mostrar(app, html`${cabecalhoInicio(cargo)}
+    <section class="cartao" aria-label="Como funciona o índice dos deputados estaduais">
+      <h2>${c.rotulo}: índice parcial <span class="em-breve">depende de cada Assembleia</span></h2>
+      <p class="painel-sub" style="margin:8px 0 0">${c.lead} O deputado é comparado só com os colegas da <strong>mesma Assembleia</strong>, e a posição também é só dentro dela. ${meta.comNota != null ? html`Hoje ${fmtNum.format(meta.comNota)} de ${fmtNum.format(meta.total)} têm índice.` : ''} <a href="#/metodologia">Como é calculado</a> · <a href="#/fontes">Situação de cada Assembleia</a></p>
+    </section>
+    <section class="secao" aria-label="Lista de eleitos">
+      <div class="filtros filtros-auto">
+        <label class="campo"><span>Estado</span>
+          <select id="s-uf">${UFS.map(u => html`<option value="${u}" ${u === estado.uf ? 'selected' : ''}>${u} · ${NOMES_UF[u]}</option>`)}</select></label>
+        <label class="campo"><span>Nome</span><input id="s-busca" type="search" placeholder="Digite parte do nome" autocomplete="off"></label>
+        <label class="campo"><span>Partido</span><select id="s-partido"><option value="">Todos</option></select></label>
+        <label class="campo"><span>Ordem</span>
+          <select id="s-ordem"><option value="maior">Maior índice primeiro</option><option value="menor">Menor índice primeiro</option><option value="nome">Nome (A a Z)</option></select></label>
+      </div>
+      <p class="contagem" id="s-contagem" aria-live="polite" style="margin-top:12px"></p>
+      <div id="s-aviso"></div>
+      <div id="s-corpo">${esqueletoLinhas(4)}</div>
+      <div class="mais-linha" id="s-mais"></div>
+      <p class="nota" id="s-nota"></p>
+    </section>`);
+  $('#busca-topo').closest('label').hidden = true;
+
+  const vista = { uf: estado.uf, busca: '', partido: '', ordem: 'maior', limite: 60, dado: null };
+  const vivo = () => token === rotaToken;
+  const ORDENS = {
+    maior: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || cmpNome(a, b),
+    menor: (a, b) => ((a.nota == null) - (b.nota == null)) || (b.rank ?? 0) - (a.rank ?? 0) || cmpNome(a, b),
+    nome: cmpNome
+  };
+
+  async function carregarUf() {
+    mostrar($('#s-corpo'), esqueletoLinhas(4));
+    $('#s-contagem').textContent = '';
+    mostrar($('#s-aviso'), html``);
+    try {
+      vista.dado = await lerArquivo(`${cargo}-${vista.uf}.json`);
+    } catch (e) {
+      if (!vivo()) return;
+      vista.dado = null;
+      mostrar($('#s-corpo'), html`<p class="vazio">Ainda não há a lista deste estado. Ela aparece depois da próxima atualização diária.</p>`);
+      return;
+    }
+    if (!vivo()) return;
+    const itens = vista.dado.itens;
+    const partidos = [...new Set(itens.map(i => i.partido).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    mostrar($('#s-partido'), html`<option value="">Todos</option>${partidos.map(p => html`<option value="${p}">${p}</option>`)}`);
+    vista.partido = '';
+    const comNota = itens.filter(i => i.nota != null).length;
+    const motivo = (itens.find(i => i.nota == null && i.motivo) || {}).motivo;
+    mostrar($('#s-aviso'), comNota
+      ? html`<p class="nota">${selo('indice', '', 'Índice parcial')} ${fmtNum.format(comNota)} de ${fmtNum.format(itens.length)} deputados desta Assembleia têm índice. É parcial: usa só o que a Assembleia publica e o Placar consegue ler (abra o perfil para ver o que entrou).</p>`
+      : html`<p class="nota">Nenhum deputado desta Assembleia tem índice por enquanto. ${motivo || ''}</p>`);
+    mostrar($('#s-nota'), html`${selo('oficial')} A lista vem do TSE e mostra quem foi eleito em ${vista.dado.ano}. Substituições depois da eleição (suplentes que assumiram, renúncias, cassações) não aparecem.`);
+    desenhar();
+  }
+
+  function desenhar() {
+    if (!vista.dado) return;
+    const q = semAcento(vista.busca.trim());
+    const lista = vista.dado.itens.filter(i =>
+      (!vista.partido || i.partido === vista.partido) &&
+      (!q || semAcento(i.nome).includes(q) || semAcento(i.urna || '').includes(q))).sort(ORDENS[vista.ordem]);
+    const visiveis = lista.slice(0, vista.limite);
+    $('#s-contagem').textContent = plural(lista.length, 'eleito', 'eleitos');
+    mostrar($('#s-corpo'), visiveis.length ? html`<ul class="lista-pessoas">${visiveis.map(i => html`<li>
+        <a class="pessoa ${i.nota == null ? 'pessoa-sem' : ''}" href="#/${cargo}/${i.uf}/${i.id}">
+          <span class="avatar" aria-hidden="true">${iniciais(i.nome)}</span>
+          <span class="pessoa-info"><span class="pessoa-nome">${i.nome}</span>
+          <span class="pessoa-meta">${i.partido || 'Sem partido'}${i.nota != null && i.rank != null ? ` · ${fmtNum.format(i.rank)}º na Assembleia` : (i.nota == null ? ' · sem índice' : '')}</span></span>
+          ${i.nota != null ? anel(i.nota, { tam: 48, esp: 5 }) : ''}
+          <span class="ico-seta">${icone('seta', 18)}</span>
+        </a></li>`)}</ul>` : html`<p class="vazio">Ninguém encontrado com esses filtros.</p>`);
+    mostrar($('#s-mais'), lista.length > vista.limite
+      ? html`<button class="botao" type="button" data-mais>Mostrar mais (${fmtNum.format(lista.length - vista.limite)} restantes)</button>` : html``);
+  }
+
+  $('#s-uf').addEventListener('change', e => { vista.uf = e.target.value; estado.uf = vista.uf; salvarPref('uf', vista.uf); vista.limite = 60; carregarUf(); });
+  $('#s-busca').addEventListener('input', e => { vista.busca = e.target.value; vista.limite = 60; desenhar(); });
+  $('#s-partido').addEventListener('change', e => { vista.partido = e.target.value; vista.limite = 60; desenhar(); });
+  $('#s-ordem').addEventListener('change', e => { vista.ordem = e.target.value; vista.limite = 60; desenhar(); });
+  $('#s-mais').addEventListener('click', e => { if (e.target.closest('[data-mais]')) { vista.limite += 120; desenhar(); } });
+  $('#s-uf').value = vista.uf;
+  carregarUf();
+}

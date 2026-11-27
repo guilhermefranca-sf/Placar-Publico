@@ -1,9 +1,13 @@
 'use strict';
 
 /* =====================================================================
-   Placar Público — perfis de gestores: presidente, governadores e prefeitos
-   Abas por tema (serviços básicos, saneamento, saúde, educação, segurança,
-   infraestrutura, obras, economia, orçamento, transparência, fontes).
+   Placar Público — perfis de gestores: presidente e governadores
+   (prefeitos saíram do Placar na versão 8; o código deles segue aqui, parado).
+   Abas do governador: serviços básicos, saneamento, saúde, educação, segurança,
+   economia, orçamento, transparência, fontes. Abas do presidente: saúde,
+   educação, segurança, economia, preços, orçamento, transparência, fontes.
+   Onde não há nota, o presidente mostra o Brasil no mundo (Banco Mundial) e o
+   governador mostra a posição entre os 27 estados.
 
    Regras que esta tela cumpre:
    - O recorte é de 48 meses fechados. Cada ano de contas mostra QUEM governava
@@ -414,7 +418,119 @@ function painelSecaoExec(el, ctx, secao) {
   const nota = (NOTA_SECAO[secao] || {})[ctx.esfera];
   mostrar(el, html`
     ${nota ? html`<section class="cartao cartao-contexto" style="margin-top:0"><p>${icone('info', 18)} <span>${nota}</span></p></section>` : ''}
+    ${ctx.esfera === 'E' ? blocoRankingEstados(ctx, secao) : ''}
     ${grupos.length ? grupos.map(g => renderGrupo(ctx, g)) : html`<section class="cartao">${indisponivel('Nenhum indicador desta área foi integrado ao Placar.')}</section>`}`);
+}
+
+/* ---------- Posição: Brasil no mundo (presidente) e entre os estados (governador) ---------- */
+
+const numBR = (v, c) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: c ?? (Math.abs(v) >= 1000 ? 0 : 2) }));
+
+/* Régua de posição: 1º à esquerda, último à direita, com um marcador. */
+function reguaPosicao(pos, de, rotulo) {
+  const pct = de > 1 ? Math.max(0, Math.min(100, (pos - 1) / (de - 1) * 100)) : 0;
+  return html`<div class="rk-regua" role="img" aria-label="${rotulo}"><span class="rk-trilho"></span><span class="rk-marca" style="left:${pct.toFixed(1)}%"></span><span class="rk-ext rk-e">1º</span><span class="rk-ext rk-d">${de}º</span></div>`;
+}
+
+/* Um indicador do Banco Mundial: valor do Brasil, posição entre os países, melhor país e mediana. */
+function cartaoMundo(ind, mundo) {
+  const titulo = html`<h2 class="painel-titulo">${ind.nome} ${selo('oficial')}</h2>`;
+  const fonte = html`<p class="nota">Fonte: <a href="${urlSegura(ind.url)}" target="_blank" rel="noopener">Banco Mundial</a>${ind.lidoEm ? ` · lido em ${dataBR(ind.lidoEm)}` : ''}. A posição é conta do Placar Público sobre os valores do Banco Mundial.</p>`;
+  if (ind.posicao == null) {
+    return html`<section class="cartao">${titulo}${indisponivel(ind.motivo || 'O ranking deste indicador não pôde ser calculado.')}${fonte}</section>`;
+  }
+  const sentido = ind.melhor === 'maior' ? 'quanto maior o valor, melhor a posição' : 'quanto menor o valor, melhor a posição';
+  const mesmo = ind.mesmoAno != null && ind.mesmoAno < ind.de ? ` ${fmtNum.format(ind.mesmoAno)} deles têm o dado do mesmo ano; os demais entram com o valor mais recente, de ${ind.anosDosPaises.de} a ${ind.anosDosPaises.ate}.` : '';
+  return html`<section class="cartao">${titulo}
+    <div class="numeros">
+      <div class="numero"><span>Brasil</span><strong>${numBR(ind.brasil.valor)}</strong><small>${ind.unidade} · ${ind.brasil.ano}</small></div>
+      <div class="numero"><span>Posição no mundo</span><strong>${ind.posicao}º de ${fmtNum.format(ind.de)}</strong><small>1º = melhor (${sentido})</small></div>
+      <div class="numero"><span>Melhor país</span><strong>${ind.melhorPais.pais}</strong><small>${numBR(ind.melhorPais.valor)} · ${ind.melhorPais.ano}</small></div>
+      <div class="numero"><span>Mediana dos países</span><strong>${numBR(ind.mediana)}</strong><small>${ind.unidade}</small></div>
+    </div>
+    ${reguaPosicao(ind.posicao, ind.de, `Brasil em ${ind.posicao}º lugar entre ${ind.de} países`)}
+    <p class="nota">Comparação com ${fmtNum.format(ind.de)} países com dado.${mesmo}${ind.desatualizado ? ' Esta leitura é da atualização anterior: a última consulta ao Banco Mundial falhou.' : ''}</p>
+    ${fonte}
+  </section>`;
+}
+
+const NOTA_MUNDO = {
+  saude: 'A saúde é financiada e executada por União, estados e municípios, e depende de fatores sociais. Estes números mostram como o Brasil está no mundo; não medem a gestão do presidente.',
+  educacao: 'A educação básica é, em grande parte, de estados e municípios. Estes números mostram como o Brasil está no mundo; não medem a gestão do presidente.',
+  seguranca: 'A segurança pública é competência principalmente dos estados. Esta é uma comparação do Brasil com outros países e não atribui o resultado ao presidente.',
+  economia: 'Posição do Brasil entre os países. Crescimento e desemprego dependem também de fatores internacionais, do Banco Central e do Congresso.',
+  transparencia: 'O indicador de controle da corrupção resume percepções coletadas pelo Banco Mundial; é uma opinião agregada, não um fato medido nem uma acusação.'
+};
+
+function blocoMundo(ctx, secao) {
+  const nota = NOTA_MUNDO[secao];
+  const inds = ctx.mundo ? (ctx.mundo.indicadores || []).filter(i => i.tema === secao) : [];
+  if (!inds.length && !ctx.mundo) {
+    return html`${nota && secao !== 'economia' ? html`<section class="cartao cartao-contexto" style="margin-top:0"><p>${icone('info', 18)} <span>${nota}</span></p></section>` : ''}
+      <section class="cartao"><h2 class="painel-titulo">Brasil no mundo</h2>${indisponivel('O ranking mundial ainda não foi gerado: ele vem do Banco Mundial e é atualizado uma vez por semana.')}</section>`;
+  }
+  return html`${nota && secao !== 'economia' ? html`<section class="cartao cartao-contexto" style="margin-top:0"><p>${icone('info', 18)} <span>${nota}</span></p></section>` : ''}
+    ${inds.length ? html`<h2 class="painel-titulo" style="margin:18px 0 4px">Brasil no mundo</h2>
+      <p class="painel-sub">${ctx.mundo.regra || ''}</p>
+      ${inds.map(i => cartaoMundo(i, ctx.mundo))}` : ''}`;
+}
+
+/* ---------- Valores de fontes independentes (conferidos à mão, com link e data) ---------- */
+
+/** Um valor de fonte independente: pontos no tempo, edição, links da publicação e aviso de leitura. */
+function cartaoIndependente(ind) {
+  const f = ind.fonte || {};
+  const fmt = (v) => (ind.unidade.startsWith('R$') ? fmtR(v) : numBR(v, ind.casas));
+  const links = (ind.urls || []).map(urlSegura).filter(Boolean);
+  return html`<section class="cartao">
+    <h2 class="painel-titulo">${ind.nome} ${selo('independente', f.organizacao ? f.organizacao.split(',')[0].split(' — ')[0] : '')}</h2>
+    <div class="numeros">
+      ${ind.pontos.map(p => html`<div class="numero"><span>${p.rotulo}</span><strong>${fmt(p.valor)}</strong><small>${p.vezesOPiso != null ? `${numBR(p.vezesOPiso, 2)} vezes o piso nacional` : ind.unidade}</small></div>`)}
+    </div>
+    ${ind.destaque ? html`<p>${ind.destaque}</p>` : ''}
+    <p class="nota">${ind.aviso}</p>
+    <p class="nota">Edição: ${ind.edicao}. Conferido pelo Placar em ${dataBR(ind.conferidoEm)}${ind.leitura ? ` (leitura: ${ind.leitura})` : ''}.
+      Fonte: <a href="${urlSegura(f.url)}" target="_blank" rel="noopener">${f.nome || 'fonte independente'}</a>.
+      ${links.length ? html`Onde foi lido: ${links.map((u, i) => html`${i ? ' · ' : ''}<a href="${u}" target="_blank" rel="noopener">link ${i + 1}</a>`)}.` : ''}
+      <a href="#/fontes-independentes">Ver todas as fontes independentes</a>.</p>
+  </section>`;
+}
+
+/** Valores independentes de uma aba do presidente. Sem arquivo ou sem valor conferido, não desenha nada (nunca inventa). */
+function blocoIndependentes(ctx, secao) {
+  const lista = ctx.indep ? (ctx.indep.indicadores || []).filter(i => i.cargo === 'presidente' && i.secao === secao) : [];
+  if (!lista.length) return '';
+  return html`<h2 class="painel-titulo" style="margin:18px 0 4px">Outras fontes (independentes)</h2>
+    <p class="painel-sub">Institutos e organizações que complementam os dados oficiais. Cada valor traz a edição, o link da publicação e a data em que o Placar conferiu.</p>
+    ${lista.map(cartaoIndependente)}`;
+}
+
+/* Métricas do ranking entre os estados, para uma aba do governador sem nota. */
+function blocoRankingEstados(ctx, secao) {
+  const rk = ctx.rankEstados;
+  if (!rk) return secao === 'servicos' || secao === 'economia' || secao === 'orcamento' || secao === 'transparencia'
+    ? html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Posição entre os estados</h2>${indisponivel('O ranking entre os estados ainda não foi gerado pela atualização diária.')}</section>` : '';
+  const ms = (rk.metricas || []).filter(m => m.secao === secao);
+  if (!ms.length) return '';
+  const uf = ctx.uf;
+  return html`<section class="cartao" style="margin-top:0">
+    <h2 class="painel-titulo">Posição entre os ${fmtNum.format(rk.estados)} estados</h2>
+    <p class="painel-sub">${ctx.lugar} comparado com os demais estados e o Distrito Federal. Nesta área não há nota: o ranking só ordena os valores.</p>
+    ${ms.map(m => {
+      const r = (m.itens || {})[uf];
+      const sentido = m.sentido === 'neutro' ? 'do maior valor para o menor; não diz quem faz melhor' : m.sentido === 'menor-melhor' ? 'menor valor = melhor posição' : 'maior valor = melhor posição';
+      if (!r || r.posicao == null) return html`<div class="rk-linha"><h3>${m.nome}</h3>${indisponivel(m.motivo || `Este estado não tem o dado do ano ${m.ano ?? 'de comparação'}.`)}</div>`;
+      return html`<div class="rk-linha"><h3>${m.nome} ${selo('calculado', 'comparação')}</h3>
+        <div class="numeros">
+          <div class="numero"><span>${ctx.lugar}</span><strong>${numBR(r.valor, m.casas)}</strong><small>${m.unidade}${m.ano ? ` · ${m.ano}` : ''}</small></div>
+          <div class="numero"><span>Posição</span><strong>${r.posicao}º de ${m.de}</strong><small>${sentido}</small></div>
+          <div class="numero"><span>1º / último</span><strong>${numBR(m.extremos.primeiro, m.casas)} / ${numBR(m.extremos.ultimo, m.casas)}</strong><small>${m.unidade}</small></div>
+        </div>
+        ${reguaPosicao(r.posicao, m.de, `${ctx.lugar} em ${r.posicao}º lugar entre ${m.de} estados`)}
+        <p class="nota">${m.aviso || ''}</p></div>`;
+    })}
+    <p class="nota">Só entram os estados com o dado do mesmo ano. Estado sem o dado fica sem posição, e isso não vira zero. </p>
+  </section>`;
 }
 
 /* ---------- Visão geral ---------- */
@@ -443,8 +559,9 @@ function tilesVisao(ctx) {
   </div>`;
 }
 
+const SECOES_DO_GOVERNADOR = new Set(ABAS_EXECUTIVO.map(a => a[0]));
 function cartaoCobertura(ctx) {
-  const lista = ctx.catalogo.indicadores.filter(i => i.esferas.includes(ctx.esfera));
+  const lista = ctx.catalogo.indicadores.filter(i => i.esferas.includes(ctx.esfera) && SECOES_DO_GOVERNADOR.has(i.secao));
   const n = t => lista.filter(i => i.tipo === t).length;
   const anosFechados = Object.keys(ctx.extra.anos).filter(a => ['fechado', 'sem-balanco', 'nao-coletado', 'erro-de-consulta'].includes(ctx.extra.anos[a].situacao));
   const coletados = anosFechados.filter(a => ['fechado', 'sem-balanco'].includes(ctx.extra.anos[a].situacao));
@@ -458,7 +575,7 @@ function cartaoCobertura(ctx) {
       <div class="numero"><span>Sem confirmação</span><strong>${n('pendente')}</strong><small>fonte oficial indicada em cada aba</small></div>
     </div>
     ${coletados.length < anosFechados.length ? html`<p class="nota">A coleta das contas dos anos mais antigos é feita aos poucos, um pouco a cada dia: ${coletados.length} de ${anosFechados.length} anos de contas já estão aqui.</p>` : ''}
-    <p class="nota">Veja as abas <a href="${base}/saneamento">Saneamento</a>, <a href="${base}/saude">Saúde</a>, <a href="${base}/educacao">Educação</a> e <a href="${base}/obras">Obras</a> para a fonte oficial de cada indicador ainda sem dado.</p>
+    <p class="nota">Veja as abas <a href="${base}/saneamento">Saneamento</a>, <a href="${base}/saude">Saúde</a> e <a href="${base}/educacao">Educação</a> para a fonte oficial de cada indicador ainda sem dado.</p>
   </section>`;
 }
 
@@ -508,7 +625,7 @@ function painelFontesExec(el, ctx) {
   const { extra, catalogo } = ctx;
   const f = (DADOS.meta && DADOS.meta.fontes) || {};
   const quando = x => (x && x.atualizadoEm ? dataHoraBR(x.atualizadoEm) : '—');
-  const lista = catalogo.indicadores.filter(i => i.esferas.includes(ctx.esfera));
+  const lista = catalogo.indicadores.filter(i => i.esferas.includes(ctx.esfera) && SECOES_DO_GOVERNADOR.has(i.secao));
   const porFonte = new Map();
   for (const i of lista) {
     const e = porFonte.get(i.fonte) || { fonte: i.fonte, orgao: i.orgao, url: i.url, oficial: 0, calculado: 0, pendente: 0 };
@@ -554,7 +671,7 @@ async function viewExecutivo(cargo, uf, id, abaInicial, token) {
   mostrar(app, esqueletoPerfil(...voltar));
   let dado;
   try {
-    dado = await lerArquivo(cargo === 'governadores' ? 'governadores.json' : `prefeitos-${uf}.json`);
+    dado = await lerArquivo(cargo === 'governadores' ? 'governadores.json' : `prefeitos-${uf}.json`); // prefeitos: arquivado, não é mais chamado
   } catch (e) {
     console.error(e);
     if (token === rotaToken) { mostrar(app, html`<div id="erro"></div>`); mostrarErro($('#erro'), 'Não foi possível carregar esta página.', () => viewExecutivo(cargo, uf, id, abaInicial, token)); }
@@ -565,9 +682,10 @@ async function viewExecutivo(cargo, uf, id, abaInicial, token) {
   if (!item) return naoEncontrado(...voltar, c.singular);
 
   // O perfil ampliado é opcional: se o arquivo ainda não existe, a tela continua funcionando.
-  const [extra, catalogo] = await Promise.all([
+  const [extra, catalogo, rankEstados] = await Promise.all([
     item.ibge != null ? lerArquivo(`executivos/${item.ibge}.json`).catch(() => null) : null,
-    lerArquivo('indicadores.json').catch(() => null)
+    lerArquivo('indicadores.json').catch(() => null),
+    lerArquivo('ranking-estados.json').catch(() => null)
   ]);
   if (token !== rotaToken) return;
 
@@ -590,7 +708,7 @@ async function viewExecutivo(cargo, uf, id, abaInicial, token) {
     ${barraAbas(ABAS_EXECUTIVO, `#/${cargo}/${uf}/${id}`)}
     <section class="painel" id="painel" role="tabpanel" aria-live="polite"></section>`);
 
-  const ctx = { item, dado, cargo, uf, id, ehPref, lugar, c, extra, catalogo, esfera: ehPref ? 'M' : 'E' };
+  const ctx = { item, dado, cargo, uf, id, ehPref, lugar, c, extra, catalogo, rankEstados, esfera: ehPref ? 'M' : 'E' };
   ligarAbas({
     chave: `${cargo}/${uf}/${id}`, abas: ABAS_EXECUTIVO, abaInicial, token, antigas: ABAS_ANTIGAS_EXECUTIVO,
     desenharPainel: (aba, painel) => {
@@ -704,18 +822,23 @@ function cartaoSerie(ctx, ind) {
   </section>`;
 }
 
+const TEMAS_MUNDO = new Set(['saude', 'educacao', 'seguranca', 'economia', 'transparencia']);
+
 function painelSecaoPresidente(el, ctx, secao) {
   if (!ctx.pres || !ctx.catalogo) return mostrar(el, semPerfilAmpliado({}, secao));
   const lista = ctx.catalogo.indicadores.filter(i => i.secao === secao && i.esferas.includes('F'));
   const series = lista.filter(i => i.serie);
   const pend = lista.filter(i => i.tipo === 'pendente');
+  const mundial = TEMAS_MUNDO.has(secao);
   const nota = secao === 'economia' ? 'Inflação, emprego e juros dependem também do Banco Central, do Congresso, do cenário internacional e do clima. Cada série mostra a gestão em cada mês e o resumo por gestão; nenhum número é atribuído à gestão atual por inteiro.'
     : secao === 'orcamento' ? 'A dívida pública depende do crescimento da economia, dos juros e das decisões de Congresso, estados e municípios.' : '';
   mostrar(el, html`
     ${nota ? html`<section class="cartao cartao-contexto" style="margin-top:0"><p>${icone('info', 18)} <span>${nota}</span></p></section>` : ''}
     ${series.map(i => cartaoSerie(ctx, i))}
     ${pend.length ? blocoPendentes(ctx, pend) : ''}
-    ${!series.length && !pend.length ? html`<section class="cartao">${indisponivel('Nenhum indicador nacional desta área foi integrado ao Placar. Os serviços de saneamento, segurança e educação básica são, em grande parte, de estados e municípios: veja o perfil de cada governador e prefeito.')}</section>` : ''}`);
+    ${mundial ? blocoMundo(ctx, secao) : ''}
+    ${blocoIndependentes(ctx, secao)}
+    ${!series.length && !pend.length && !mundial ? html`<section class="cartao">${indisponivel('Nenhum indicador nacional desta área foi integrado ao Placar.')}</section>` : ''}`);
 }
 
 /** Três números de preços na Visão geral do presidente, com link para a aba. Sem arquivo de preços, não aparece nada. */
@@ -759,24 +882,25 @@ function painelVisaoPresidente(el, ctx) {
     ${pres.indice ? cartaoIndice(pres.indice, 'presidente') : html`<section class="cartao cartao-aviso">
       <h3>Índice econômico ainda não calculado</h3>
       <p>O índice econômico do presidente aparece depois da próxima atualização diária. Ele resume inflação, desemprego e dívida pública da gestão em exercício, sem atribuir à pessoa o que depende de muitos outros fatores.</p>
-    </section>`}`);
+    </section>`}
+    ${blocoIndependentes(ctx, 'visao')}`);
 }
 
 async function viewPresidente(abaInicial, token) {
   const voltar = ['#/', 'Início'];
   mostrar(app, esqueletoPerfil(...voltar));
-  const [pres, catalogo, precos] = await Promise.all([lerArquivo('executivos/presidente.json').catch(() => null), lerArquivo('indicadores.json').catch(() => null), lerArquivo('precos.json').catch(() => null)]);
+  const [pres, catalogo, precos, mundo, indep] = await Promise.all([lerArquivo('executivos/presidente.json').catch(() => null), lerArquivo('indicadores.json').catch(() => null), lerArquivo('precos.json').catch(() => null), lerArquivo('mundo.json').catch(() => null), lerArquivo('independentes.json').catch(() => null)]);
   if (token !== rotaToken) return;
   document.title = 'Presidente da República · Placar Público';
   const atual = pres ? gestaoAtual(pres) : null;
-  const item = { nome: atual ? atual.nome : 'Presidente da República', partido: atual ? atual.partido : '' };
+  const item = { nome: atual ? atual.nome : 'Presidente da República', partido: atual ? atual.partido : '', foto: atual ? atual.foto : '' };
   const temIndice = !!(pres && pres.indice && pres.indice.nota != null);
   mostrar(app, html`
     <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
     ${heroPerfil({ item: { ...item, nota: temIndice ? pres.indice.nota : null }, cargoTxt: 'Presidente da República', meta: atual ? `${atual.partido || 'Sem partido'} · no cargo desde ${dataBR(atual.inicio)}` : 'Quem está no cargo: veja a linha do tempo na Visão geral', selos: [temIndice ? html`<span class="distintivo distintivo-neutro">Índice econômico parcial: ${pres.indice.parcial && pres.indice.parcial.usadas != null ? `${pres.indice.parcial.usadas} de ${pres.indice.parcial.total} indicadores` : 'economia e dívida'}</span>` : html`<span class="distintivo distintivo-neutro">Sem índice econômico por enquanto</span>`], anelNota: temIndice })}
     ${barraAbas(ABAS_PRESIDENTE, '#/presidente')}
     <section class="painel" id="painel" role="tabpanel" aria-live="polite"></section>`);
-  const ctx = { pres, catalogo, precos };
+  const ctx = { pres, catalogo, precos, mundo, indep };
   ligarAbas({
     chave: 'presidente', abas: ABAS_PRESIDENTE, abaInicial, token, antigas: ABAS_ANTIGAS_EXECUTIVO,
     desenharPainel: (aba, painel) => {
@@ -800,6 +924,16 @@ function painelFontesPresidente(el, ctx) {
     <p class="nota">${(ctx.pres && ctx.pres.aviso) || ''} Cada série é buscada diretamente do IBGE (SIDRA) e do Banco Central (SGS), sem alteração. Os resumos por gestão (média, variação e acumulado) são contas do Placar sobre esses números.</p>
     ${ctx.pres && (ctx.pres.erros || []).length ? html`<p class="nota">Séries que falharam na última atualização: ${ctx.pres.erros.join('; ')}.</p>` : ''}
   </section>
+  ${ctx.mundo ? html`<section class="cartao"><h2 class="painel-titulo">Fontes do Brasil no mundo (Saúde, Educação, Segurança, Economia e Transparência)</h2>
+    <div class="rolagem"><table class="tabela"><thead><tr><th>Indicador</th><th>Fonte</th><th class="curto">Ano do Brasil</th><th class="curto">Lido em</th></tr></thead><tbody>
+      ${(ctx.mundo.indicadores || []).map(i => html`<tr><td>${i.nome}</td><td><a href="${urlSegura(i.url)}" target="_blank" rel="noopener">Banco Mundial</a></td><td class="curto">${i.brasil ? i.brasil.ano : '—'}</td><td class="curto">${i.lidoEm ? dataBR(i.lidoEm) : '—'}</td></tr>`)}
+    </tbody></table></div>
+    <p class="nota">${ctx.mundo.regra || ''} Fonte: <a href="${urlSegura(ctx.mundo.fonte && ctx.mundo.fonte.url)}" target="_blank" rel="noopener">${(ctx.mundo.fonte && ctx.mundo.fonte.nome) || 'Banco Mundial'}</a>.</p></section>` : ''}
+  ${ctx.indep && (ctx.indep.indicadores || []).some(i => i.cargo === 'presidente') ? html`<section class="cartao"><h2 class="painel-titulo">Fontes independentes usadas nestas abas</h2>
+    <div class="rolagem"><table class="tabela"><thead><tr><th>Valor</th><th>Fonte</th><th>Edição</th><th class="curto">Conferido em</th></tr></thead><tbody>
+      ${ctx.indep.indicadores.filter(i => i.cargo === 'presidente').map(i => html`<tr><td>${i.nome}</td><td><a href="${urlSegura(i.fonte.url)}" target="_blank" rel="noopener">${i.fonte.nome}</a></td><td>${i.edicao}</td><td class="curto">${dataBR(i.conferidoEm)}</td></tr>`)}
+    </tbody></table></div>
+    <p class="nota">Organizações independentes não são órgãos do governo: o Placar mostra o selo "Fonte independente", o link da publicação e a data da conferência. <a href="#/fontes-independentes">Ver o catálogo completo e a vigilância diária</a>.</p></section>` : ''}
   ${ctx.precos ? html`<section class="cartao"><h2 class="painel-titulo">Fontes da aba Preços no Brasil</h2>
     <div class="rolagem"><table class="tabela"><thead><tr><th>Série</th><th>Fonte</th><th>Responsável</th><th>Limitações</th></tr></thead><tbody>
       ${['gasolina', 'dolar', 'cesta'].map(k => { const f = ctx.precos.fontes[k]; return html`<tr><td>${f.nome}</td><td>${urlSegura(f.url) ? html`<a href="${f.url}" target="_blank" rel="noopener">${f.fonte}</a>` : f.fonte}</td><td>${f.orgao}</td><td>${f.limitacoes}</td></tr>`; })}

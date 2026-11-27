@@ -4,9 +4,11 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METODO } from './nota.mjs';
+import { metodoPublicado } from './nota.mjs';
+import { NAO_MEDIDOS } from './custo.mjs';
+import { NAO_MEDIDOS_SENADO } from './senadores.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 writeFileSync(path.join(raiz, 'site', 'metodo-demo.js'),
-  `'use strict';\n// Gerado por scripts/gerar-metodo-demo.mjs. Não edite à mão.\nconst METODO_DEMO = ${JSON.stringify(METODO, null, 2)};\n`);
+  `'use strict';\n// Gerado por scripts/gerar-metodo-demo.mjs. Não edite à mão.\nconst METODO_DEMO = ${JSON.stringify(metodoPublicado({ custoNaoMedidos: NAO_MEDIDOS, custoNaoMedidosSenadores: NAO_MEDIDOS_SENADO }), null, 2)};\n`);
 console.log('site/metodo-demo.js atualizado.');

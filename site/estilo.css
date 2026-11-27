@@ -207,6 +207,8 @@ img { max-width: 100%; }
 .selo-oficial { background: var(--acento-fundo); color: var(--acento); }
 .selo-calculado { background: var(--media-fundo); color: var(--media); }
 .selo-indice { background: var(--marinho); color: #fff; }
+.selo-independente { background: var(--ton-roxo); color: #3b2a7a; }
+.selo-neutro { background: var(--neutro-fundo); color: var(--neutro); }
 
 .indisp {
   display: flex; gap: 12px; align-items: flex-start; background: var(--superficie-2);
@@ -690,3 +692,20 @@ code { background: var(--superficie-2); padding: 1px 6px; border-radius: 6px; fo
 .resp-tag { font-size: .68rem; font-weight: 700; color: var(--tinta-2); background: var(--sem-fundo); border-radius: 999px; padding: 1px 8px; }
 .tabela-anos th.ano-cab.sem .ano-g { color: var(--tinta-2); }
 @media (max-width: 520px) { .tiles-precos { grid-template-columns: 1fr; } }
+
+
+/* ---------- Posição (Brasil no mundo, entre os estados) ---------- */
+.rk-regua { position: relative; height: 34px; margin: 10px 2px 4px; }
+.rk-trilho { position: absolute; left: 0; right: 0; top: 12px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--alta-anel), var(--media-anel), var(--baixa-anel)); opacity: .55; }
+.rk-marca { position: absolute; top: 5px; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--tinta); box-shadow: 0 0 0 2px var(--superficie); }
+.rk-ext { position: absolute; top: 22px; font-size: .72rem; color: var(--tinta-2); }
+.rk-e { left: 0; }
+.rk-d { right: 0; }
+.rk-linha { padding: 12px 0; border-top: 1px solid var(--linha); }
+.rk-linha:first-of-type { border-top: 0; }
+.rk-linha h3 { font-size: 1rem; margin: 0 0 6px; }
+
+/* Senadores sem índice: custo por mês no lugar do anel */
+.pessoa-custo { display: inline-flex; flex-direction: column; align-items: flex-end; text-align: right; font-weight: 700; font-size: .95rem; color: var(--tinta); line-height: 1.15; min-width: 64px; }
+.pessoa-custo small { font-weight: 400; font-size: .7rem; color: var(--tinta-2); max-width: 92px; }
+.pessoa-custo.sem { font-weight: 600; color: var(--tinta-2); font-size: .8rem; }

@@ -18,6 +18,7 @@
 
 import { percorrerCsv, lerDoZip, normalizar, nomeProprio } from './util.mjs';
 import { UFS, URL_ZIP } from './tse.mjs';
+import { urlFotoTse } from './fotos.mjs';
 
 export const AVISO_COBERTURA =
   'As datas de início e fim vêm dos arquivos de eleitos do TSE (mandato regular, posse em 1º de janeiro) e, quando houve troca de gestor no meio do mandato, de um registro com fontes. ' +
@@ -101,6 +102,8 @@ export function lerExecutivos(textoCsv, { anoArquivo = null } = {}) {
       nome: nomeProprio(l[ix.NM_CANDIDATO]),
       urna: ix.NM_URNA_CANDIDATO != null ? nomeProprio(l[ix.NM_URNA_CANDIDATO]) : null,
       partido: l[ix.SG_PARTIDO],
+      // número de sequência da candidatura no TSE (não é CPF); serve só para montar o endereço da foto oficial
+      sq,
       // só na memória, para reconhecer a mesma pessoa em duas eleições (nunca é gravado nem publicado)
       pessoa: `${normalizar(l[ix.NM_CANDIDATO])}|${ix.DT_NASCIMENTO != null ? l[ix.DT_NASCIMENTO] : ''}`,
       dataEleicao,
@@ -151,15 +154,18 @@ export function montarGestoes(registros, { hoje }) {
       anterior.fimAprox = true;
       anterior.encerradaPor = 'eleição suplementar';
     }
+    // Foto oficial da candidatura (TSE). Eleição suplementar tem outro código de eleição: sem foto, em vez de arriscar a errada.
+    const foto = it.r.suplementar ? null : urlFotoTse(it.r.anoEleicao, it.r.sq, it.r.cargo === 'presidente' ? 'BR' : it.r.uf);
     const reeleicao = anterior && anterior.pessoa === it.r.pessoa && addDias(anterior.fim, 1) >= it.inicio;
     if (reeleicao) {
+      if (foto) anterior.foto = foto;
       anterior.fim = it.fim;
       anterior.mandatos.push({ ano: it.r.anoEleicao, suplementar: it.r.suplementar });
       anterior.reeleito = true;
       continue;
     }
     gestoes.push({
-      nome: it.r.nome, urna: it.r.urna, partido: it.r.partido, pessoa: it.r.pessoa,
+      nome: it.r.nome, urna: it.r.urna, partido: it.r.partido, pessoa: it.r.pessoa, foto,
       inicio: it.inicio, fim: it.fim, inicioAprox: it.inicioAprox, fimAprox: false,
       mandatos: [{ ano: it.r.anoEleicao, suplementar: it.r.suplementar }], reeleito: false, origem: 'tse'
     });
@@ -302,9 +308,10 @@ function trocasDoEnte(trocas, cargo, uf, municipio) {
  * governadores (por UF) e do presidente.
  *   baixarZip(url) devolve o caminho local do .zip (assim dá para testar sem internet).
  */
-export async function gerarAdministracoes({ baixarZip, hoje = new Date(), trocas = [], janela = janelaDe48Meses(hoje), ufs = UFS }) {
+export async function gerarAdministracoes({ baixarZip, hoje = new Date(), trocas = [], janela = janelaDe48Meses(hoje), ufs = UFS, incluirPrefeitos = true }) {
   const elei = eleicoesRelevantes(janela.de, janela.ate);
-  const anos = [...new Set([...elei.municipais, ...elei.gerais])].sort();
+  // incluirPrefeitos = false (versão 8): não baixa as eleições municipais; só governadores e presidente.
+  const anos = [...new Set([...(incluirPrefeitos ? elei.municipais : []), ...elei.gerais])].sort();
   const registros = { prefeito: new Map(), governador: new Map(), presidente: [] };
   const avisos = [];
   const guardar = (r) => {
@@ -320,7 +327,7 @@ export async function gerarAdministracoes({ baixarZip, hoje = new Date(), trocas
     try { zip = await baixarZip(URL_ZIP(ano)); } catch (e) { avisos.push(`TSE ${ano}: arquivo não obtido (${String(e.message).slice(0, 120)}).`); continue; }
     for (const uf of ufs) {
       try {
-        for (const r of lerExecutivos(lerDoZip(zip, `consulta_cand_${ano}_${uf}.csv`, 'windows-1252'), { anoArquivo: ano })) guardar(r);
+        for (const r of lerExecutivos(lerDoZip(zip, `consulta_cand_${ano}_${uf}.csv`, 'windows-1252'), { anoArquivo: ano })) if (incluirPrefeitos || r.cargo !== 'prefeito') guardar(r);
       } catch (e) {
         if (!(uf === 'DF' && elei.municipais.includes(ano) && !elei.gerais.includes(ano))) avisos.push(`TSE ${ano} ${uf}: ${String(e.message).slice(0, 120)}`);
       }

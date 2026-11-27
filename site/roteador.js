@@ -4,13 +4,14 @@
    Placar Público — roteador
    Troca de tela pelo endereço depois do "#":
      #/                              início (deputados federais)
-     #/federais  #/governadores  #/prefeitos  #/estaduais
+     #/federais  #/senadores  #/governadores
      #/federais/{id}[/{aba}]         perfil de deputado federal
-     #/{governadores|prefeitos}/{UF}/{id}[/{aba}]   perfil de governador e prefeito
+     #/senadores/{id}[/{aba}]        perfil de senador
+     #/governadores/{UF}/{id}[/{aba}]   perfil de governador
      #/presidente[/{aba}]            perfil do Presidente da República
-     #/estaduais/{UF}/{id}           ficha de deputado estadual
+     #/prefeitos  #/vereadores  #/estaduais   saíram do Placar na v8: mostram um aviso
      #/comparar[/{cargo}/{A}/{B}]    comparar duas pessoas
-     #/noticias   #/mais   #/metodologia   #/fontes   #/verificacao
+     #/noticias   #/mais   #/metodologia   #/fontes   #/fontes-independentes   #/verificacao
    ===================================================================== */
 
 // Foto que não carrega vira um círculo com as iniciais, sem ícone quebrado.
@@ -31,7 +32,8 @@ function rota() {
   // Trocar só a aba do mesmo perfil não conta como tela nova: o token continua o mesmo.
   let chave = null, aba = null;
   if (a === 'federais' && /^\d+$/.test(b || '')) { chave = `federais/${b}`; aba = c; }
-  else if ((a === 'governadores' || a === 'prefeitos') && b && c && UFS.includes(b)) { chave = `${a}/${b}/${c}`; aba = d; }
+  else if (a === 'senadores' && /^\d+$/.test(b || '')) { chave = `senadores/${b}`; aba = c; }
+  else if (a === 'governadores' && b && c && UFS.includes(b)) { chave = `${a}/${b}/${c}`; aba = d; }
   else if (a === 'presidente') { chave = 'presidente'; aba = b; }
   if (chave && perfilAtual && perfilAtual.chave === chave) { perfilAtual.trocarAba(aba); return; }
 
@@ -42,6 +44,7 @@ function rota() {
 
   if (a === 'metodologia') { marcarMenu('metodologia'); return viewMetodologia(); }
   if (a === 'fontes') { marcarMenu('fontes'); return viewFontes(); }
+  if (a === 'fontes-independentes') { marcarMenu('fontes'); return viewFontesIndependentes(token); }
   if (a === 'verificacao') { marcarMenu('mais'); return viewVerificacao(); }
   if (a === 'mais') { marcarMenu('mais'); return viewMais(); }
   if (a === 'noticias') { marcarMenu('noticias'); return viewNoticias(token); }
@@ -49,10 +52,11 @@ function rota() {
 
   marcarMenu('inicio');
   if (a === 'presidente') return viewPresidente(b, token);
+  if (a && CARGOS_RETIRADOS[a]) return viewCargoRetirado(a);
   if (!a || !CARGOS[a]) return viewCargo('federais', token, true);
-  if (a === 'federais') {
-    if (/^\d+$/.test(b || '')) return viewPerfil('federais', '', b, c, token);
-    return viewCargo('federais', token, false);
+  if (a === 'federais' || a === 'senadores') {
+    if (/^\d+$/.test(b || '')) return viewPerfil(a, '', b, c, token);
+    return viewCargo(a, token, false);
   }
   if (b && c && UFS.includes(b)) return viewPerfil(a, b, c, d, token);
   return viewCargo(a, token, false);

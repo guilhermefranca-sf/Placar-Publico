@@ -87,11 +87,12 @@ export function anosVigentes(hoje) {
  * anos = { municipal, governadores, estaduais }  (veja anosVigentes)
  * Devolve { prefeitos:{UF:[]}, estaduais:{UF:[]}, governadores:[], avisos:[] }
  */
-export async function gerarEleitos({ baixarZip, anos, hoje = new Date() }) {
+export async function gerarEleitos({ baixarZip, anos, hoje = new Date(), incluir = { prefeitos: true, estaduais: true } }) {
   const resultado = { prefeitos: {}, estaduais: {}, governadores: [], avisos: [], anos };
 
-  const zipMunicipal = await baixarZip(URL_ZIP(anos.municipal));
-  for (const uf of UFS) {
+  // incluir.prefeitos / incluir.estaduais = false: não baixa nem lê o que o Placar não mostra mais (versão 8).
+  const zipMunicipal = incluir.prefeitos === false ? null : await baixarZip(URL_ZIP(anos.municipal));
+  for (const uf of zipMunicipal ? UFS : []) {
     try {
       const e = lerEleitos(lerDoZip(zipMunicipal, `consulta_cand_${anos.municipal}_${uf}.csv`, 'windows-1252'), hoje);
       resultado.prefeitos[uf] = e.prefeitos;
@@ -112,8 +113,9 @@ export async function gerarEleitos({ baixarZip, anos, hoje = new Date() }) {
   };
   const guardarGov = (uf, e) => resultado.governadores.push(...e.governadores);
   const guardarEst = (uf, e) => { resultado.estaduais[uf] = e.estaduais; };
-  if (anos.governadores === anos.estaduais) {
-    await lerGerais(anos.governadores, (uf, e) => { guardarGov(uf, e); guardarEst(uf, e); });
+  const comEstaduais = incluir.estaduais !== false;
+  if (anos.governadores === anos.estaduais || !comEstaduais) {
+    await lerGerais(anos.governadores, (uf, e) => { guardarGov(uf, e); if (comEstaduais) guardarEst(uf, e); });
   } else {
     await lerGerais(anos.governadores, guardarGov);
     await lerGerais(anos.estaduais, guardarEst);

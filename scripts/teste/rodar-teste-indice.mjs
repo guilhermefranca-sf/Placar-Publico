@@ -366,7 +366,7 @@ await caso('presidente: nota é a média ponderada 35/35/30 dos indicadores que 
   const r = notaPresidente({ gestoes: G_PRES, indicadores: indPres({ ipca: 4, desoc: 8, divida: 5 }), janela });
   assert.equal(r.nota, 67.5, '100 x 35% + 50 x 35% + 50 x 30%');
   assert.deepEqual(r.comp.map((c) => [c.k, c.peso]), [['inflacao', 35], ['desocupacao', 35], ['divida', 30]]);
-  assert.deepEqual([r.parcial.usadas, r.parcial.total], [3, 3]); assert.match(r.parcial.escopo, /só economia e dívida/);
+  assert.deepEqual([r.parcial.usadas, r.parcial.total], [3, 3]); assert.match(r.parcial.escopo, /só inflação, desemprego e dívida/); assert.match(r.parcial.escopo, /comparação do Brasil com o mundo/);
   assert.match(r.ressalva, /não mede, sozinho, a atuação do presidente/); assert.match(r.ressalva, /Banco Central/);
   assert.equal(r.gestao.id, 'g2'); assert.equal(r.gestao.mesesNoPeriodo, 46);
   assert.match(r.comp[0].f, /IPCA acumulado em 12 meses: 4,00% em 10\/2026/);

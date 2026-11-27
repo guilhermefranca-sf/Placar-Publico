@@ -1,0 +1,79 @@
+{
+  "versao": 1,
+  "aviso": "Valores de fontes independentes conferidos à mão e publicados no Placar. Cada um tem a fonte do catálogo, a edição, o ano do dado, os endereços onde foi lido e a data da conferência. A rotina valida este arquivo todo dia: o que estiver incompleto não é publicado. Para atualizar um valor, altere aqui depois de conferir na fonte e mude a data de conferência.",
+  "indicadores": [
+    {
+      "id": "fbsp-mvi-brasil",
+      "fonteId": "fbsp",
+      "cargo": "presidente",
+      "secao": "seguranca",
+      "nome": "Mortes violentas intencionais no Brasil",
+      "unidade": "por 100 mil habitantes",
+      "melhor": "menor",
+      "casas": 1,
+      "pontos": [
+        { "rotulo": "2012", "valor": 27.7 },
+        { "rotulo": "2024", "valor": 20.6 },
+        { "rotulo": "2025", "valor": 19.1 }
+      ],
+      "destaque": "Em 2025, o Brasil teve 40.775 mortes violentas intencionais (homicídios dolosos, latrocínios e lesões corporais seguidas de morte), a menor taxa da série do Fórum, iniciada em 2012.",
+      "edicao": "20º Anuário Brasileiro de Segurança Pública, divulgado em 23/07/2026 (dados de 2025)",
+      "leitura": "reportagem que cita o Anuário",
+      "urls": [
+        "https://www.diariodepernambuco.com.br/amp/brasil/2026/07/11719408-mortes-violentas-caem-82-no-pais-em-2025-feminicidios-aumentam-4.html",
+        "https://www.jb.com.br/brasil/2026/07/1060384-brasil-tem-menor-taxa-de-mortes-violentas-intencionais-desde-2012.html",
+        "https://jornalgrandebahia.com.br/?p=1372041"
+      ],
+      "aviso": "Valor do país inteiro. Segurança pública é competência principalmente dos estados; o número não mede o desempenho do governo federal. Os valores foram lidos em reportagens que citam o Anuário: confira no Anuário, em forumseguranca.org.br.",
+      "conferidoEm": "2026-11-26"
+    },
+    {
+      "id": "dieese-salario-minimo-necessario",
+      "fonteId": "dieese",
+      "cargo": "presidente",
+      "secao": "economia",
+      "nome": "Salário mínimo necessário (estimativa do DIEESE)",
+      "unidade": "R$ por mês",
+      "melhor": "neutro",
+      "casas": 2,
+      "pontos": [
+        { "rotulo": "set/2025", "valor": 7075.83, "vezesOPiso": 4.66 },
+        { "rotulo": "set/2026", "valor": 7750.01, "vezesOPiso": 4.78 }
+      ],
+      "destaque": "Pelos cálculos do DIEESE, o salário mínimo que sustentaria uma família de quatro pessoas era 4,78 vezes o piso nacional em setembro de 2026 (4,66 vezes em setembro de 2025).",
+      "edicao": "Pesquisa Nacional da Cesta Básica de Alimentos (DIEESE/Conab), análises de setembro e outubro de 2026",
+      "leitura": "publicação original (PDF)",
+      "urls": [
+        "https://www.dieese.org.br/analisecestabasica/2026/202610cestabasica.pdf",
+        "https://www.dieese.org.br/analisecestabasica/2026/202609cestabasica.pdf"
+      ],
+      "aviso": "É uma estimativa do DIEESE, com metodologia própria (parte da cesta mais cara do mês e supõe uma família de quatro pessoas). Não é dado oficial do governo e o Placar não atribui a variação ao presidente.",
+      "conferidoEm": "2026-11-26"
+    },
+    {
+      "id": "ips-brasil-media-nacional",
+      "fonteId": "ips-brasil",
+      "cargo": "presidente",
+      "secao": "visao",
+      "nome": "IPS Brasil — média nacional do Índice de Progresso Social",
+      "unidade": "pontos (escala de 0 a 100)",
+      "melhor": "maior",
+      "casas": 2,
+      "pontos": [
+        { "rotulo": "2024", "valor": 62.85 },
+        { "rotulo": "2025", "valor": 63.05 },
+        { "rotulo": "2026", "valor": 63.4 }
+      ],
+      "destaque": "O IPS Brasil 2026 avaliou os 5.570 municípios com 57 indicadores sociais e ambientais, com dados de 2025.",
+      "edicao": "IPS Brasil 2026, divulgado em 20/05/2026",
+      "leitura": "reportagem que cita o IPS Brasil",
+      "urls": [
+        "https://www.gazetasp.com.br/cotidiano/interior-de-sp-4-melhores-cidades-para-viver/",
+        "https://portalamazonia.com/amazonia/ranking-qualidade-vida-amazonia/",
+        "https://www.itatiaia.com.br/valedoaco/ips-brasil-2026-aponta-ipatinga-como-destaque-regional-em-qualidade-de-vida/"
+      ],
+      "aviso": "O índice mede a qualidade de vida nos municípios e reflete União, estados, municípios, economia e sociedade. Não é uma nota do presidente. Os valores foram lidos em reportagens que citam o IPS Brasil: confira em ipsbrasil.org.br.",
+      "conferidoEm": "2026-11-26"
+    }
+  ]
+}

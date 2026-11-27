@@ -20,11 +20,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { METODO, mediaPonderada, atribuirPosicoes, mediaDasNotas } from './nota.mjs';
+import { METODO_ARQUIVADO, mediaPonderada, atribuirPosicoes, mediaDasNotas } from './nota.mjs';
 import { criarPercentil, arredondar, gravarJson, lerJsonSeExistir, normalizar } from './util.mjs';
 import { UFS } from './tse.mjs';
 
-const M = METODO.estaduais;
+const M = METODO_ARQUIVADO.estaduais;
 export const DIAS_ENTRE_LEITURAS = 7;
 
 /* ---------------------------- leitura de XML e de números ---------------------------- */

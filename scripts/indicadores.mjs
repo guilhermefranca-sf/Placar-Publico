@@ -295,14 +295,14 @@ const fmtBR = (v, casas = 1) => Number(v).toFixed(casas).replace('.', ',');
 
 /**
  * Índice econômico do presidente: resume três números nacionais (inflação, desemprego e dívida) só para a gestão em exercício.
- * É sempre PARCIAL: não inclui saúde, educação, segurança, saneamento nem obras federais, que ainda não têm fonte integrada.
+ * É sempre PARCIAL: não inclui saúde, educação nem segurança (que aparecem só na comparação do Brasil com o mundo, sem nota).
  * Não atribui causa: inflação, emprego e dívida dependem também do Banco Central, do Congresso, do cenário internacional e do clima.
  * A Selic fica de fora (quem a define é o Comitê de Política Monetária, não o presidente).
  */
 export function notaPresidente({ gestoes, indicadores, janela }) {
   const M = METODO.presidente;
   const atual = (gestoes || []).find((g) => g.situacao === 'em exercício');
-  const base = { versao: 1, nome: M.nome, parcial: { usadas: 0, total: M.componentes.length, escopo: 'só economia e dívida; saúde, educação, segurança, saneamento e obras federais ainda não têm fonte integrada' } };
+  const base = { versao: 1, nome: M.nome, parcial: { usadas: 0, total: M.componentes.length, escopo: 'só inflação, desemprego e dívida; saúde, educação e segurança aparecem na comparação do Brasil com o mundo, sem nota' } };
   if (!atual) return { ...base, nota: null, comp: [], motivo: 'Não há gestão em exercício registrada para o período.' };
   const meses = mesesNaJanela(janela, atual.inicio, atual.fim);
   const gestao = { id: atual.id, nome: atual.nome ?? null, inicio: atual.inicio, mesesNoPeriodo: meses };
@@ -331,7 +331,7 @@ export function notaPresidente({ gestoes, indicadores, janela }) {
 
   const usadas = comp.filter((c) => c.s != null).length;
   const nota = mediaPonderada(comp.map((c) => ({ peso: c.peso, s: c.s })), M.minIndicadores);
-  const ressalva = 'O índice resume apenas três números da economia nacional na gestão atual. Inflação, emprego e dívida dependem também do Banco Central, do Congresso, do cenário internacional e do clima; o índice não mede, sozinho, a atuação do presidente e não inclui saúde, educação, segurança, saneamento nem obras federais.';
+  const ressalva = 'O índice resume apenas três números da economia nacional na gestão atual. Inflação, emprego e dívida dependem também do Banco Central, do Congresso, do cenário internacional e do clima; o índice não mede, sozinho, a atuação do presidente e não inclui saúde, educação nem segurança, que aparecem na comparação do Brasil com o mundo, sem nota.';
   return { ...base, gestao, parcial: { ...base.parcial, usadas }, nota, comp, ...(nota == null ? { motivo: `Só ${usadas} de ${M.componentes.length} indicadores têm dado confirmado; o índice precisa de pelo menos ${M.minIndicadores}.` } : { ressalva }) };
 }
 

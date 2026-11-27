@@ -8,38 +8,52 @@ export const METODO = {
   versao: 2,
   escala: 'O índice vai de 0 a 100.',
 
-  // Deputados federais: o que cada um fez nos últimos 4 anos civis (hoje, 2023 a 2026; o ano em curso conta até hoje).
-  // Pesos pedidos pelo idealizador: cota 30%, votações nominais 20%, presença 20%, projetos aprovados 30%.
+  // Deputados federais e senadores: o que cada um fez nos últimos 4 anos civis (hoje, 2023 a 2026; o ano em curso conta até hoje).
+  // Pesos (versão 8, "opção B" escolhida pelo idealizador): projetos aprovados 30, votações nominais 15, presença no Plenário 20,
+  // presença em comissões 10 e custo para os cofres públicos 25. Soma 100. Critério sem dado fica de fora e os pesos dos demais
+  // são refeitos; o índice mostra de quantos critérios é feito.
   federais: {
     janelaAnos: 4,
     minSessoes: 20, // quem tem menos sessões que isso desde a primeira presença na janela fica sem índice
     minMesesAprovados: 12, // abaixo disso o critério "projetos aprovados" não entra (histórico insuficiente; zero não é nota baixa)
+    minReunioesComissao: 10, // abaixo disso a presença em comissões não entra (poucas reuniões esperadas: "Dado não encontrado ou não confirmado")
+    minMesesCusto: 3,        // abaixo disso o custo por mês não é comparado (poucos meses de exercício)
+    minCriterios: 3,         // o índice só sai com pelo menos 3 dos 5 critérios
     componentes: [
-      { k: 'cota', rotulo: 'Uso da cota parlamentar', peso: 30,
-        regra: 'Gasto mensal da cota parlamentar nos últimos 4 anos (valor do documento menos glosa, dividido pelos meses de exercício), comparado ao dos colegas do mesmo estado. Quem gasta menos fica com índice maior. Comparar dentro do estado evita punir quem mora longe de Brasília.' },
-      { k: 'vot', rotulo: 'Votações nominais', peso: 20,
-        regra: 'Porcentagem das votações nominais do Plenário, nos últimos 4 anos, em que o deputado registrou voto. Votação simbólica não entra, pois não tem voto individual. Votações durante licença ou afastamento não contam contra ele.' },
-      { k: 'pres', rotulo: 'Presença no plenário', peso: 20,
-        regra: 'Porcentagem das sessões deliberativas do Plenário com presença registrada nos últimos 4 anos, contadas desde a primeira presença do deputado nesse período. Sessões em que o deputado estava licenciado ou afastado, segundo o histórico oficial da Câmara, não contam contra ele.' },
       { k: 'aprov', rotulo: 'Projetos aprovados', peso: 30,
-        regra: 'Projetos de lei, PECs e outras propostas de sua autoria (sozinho ou em coautoria) apresentados nos últimos 4 anos que hoje constam como aprovados pelo Plenário da Câmara, incluindo os já transformados em lei, os enviados ao Senado e os que aguardam sanção. O número de aprovados é dividido pelos anos de exercício e comparado ao dos demais deputados. Projeto aprovado só em comissão, em tramitação, arquivado ou rejeitado não conta como aprovado. Quem tem menos de 12 meses de exercício no período fica sem este critério (histórico insuficiente), porque zero projetos aprovados no começo do mandato não é desempenho negativo; nesse caso o índice usa os outros critérios. Mede quantidade de projetos aprovados, não a importância nem o alcance social de cada um.' }
+        regra: 'Projetos de lei, PECs e outras propostas de sua autoria (sozinho ou em coautoria) apresentados nos últimos 4 anos que hoje constam como aprovados pelo Plenário da Câmara, incluindo os já transformados em lei, os enviados ao Senado e os que aguardam sanção. O número de aprovados é dividido pelos anos de exercício e comparado ao dos demais deputados. Projeto aprovado só em comissão, em tramitação, arquivado ou rejeitado não conta como aprovado. Quem tem menos de 12 meses de exercício no período fica sem este critério (histórico insuficiente), porque zero projetos aprovados no começo do mandato não é desempenho negativo; nesse caso o índice usa os outros critérios. Mede quantidade de projetos aprovados, não a importância nem o alcance social de cada um.' },
+      { k: 'vot', rotulo: 'Votações nominais', peso: 15,
+        regra: 'Porcentagem das votações nominais do Plenário, nos últimos 4 anos, em que o deputado registrou voto. Votação simbólica não entra, pois não tem voto individual. Votações durante licença ou afastamento não contam contra ele.' },
+      { k: 'pres', rotulo: 'Presença no Plenário', peso: 20,
+        regra: 'Porcentagem das sessões deliberativas do Plenário com presença registrada nos últimos 4 anos, contadas desde a primeira presença do deputado nesse período. Sessões em que o deputado estava licenciado ou afastado, segundo o histórico oficial da Câmara, não contam contra ele.' },
+      { k: 'comis', rotulo: 'Presença em comissões', peso: 10,
+        regra: 'Porcentagem das reuniões deliberativas já encerradas das comissões permanentes da Câmara, nos últimos 4 anos, em que o deputado, como membro titular da comissão na data da reunião, teve presença registrada. Audiências públicas, reuniões não deliberativas, comissões especiais, mistas e de medida provisória não entram. Reuniões em que estava licenciado ou afastado não contam contra ele. Quem teve menos de 10 reuniões esperadas no período fica sem este critério ("Dado não encontrado ou não confirmado"; não vira zero). Limites: a Câmara não publica quem substituiu o titular numa reunião; o suplente que substituiu um titular não aparece como presente nos dados, e a falta do titular substituído pode contar contra ele. Comissões têm médias de comparecimento diferentes, e o índice usa a porcentagem do próprio deputado, sem ajuste.' },
+      { k: 'custo', rotulo: 'Custo para os cofres públicos', peso: 25,
+        regra: 'Quanto o deputado custou aos cofres públicos por mês de exercício nos últimos 4 anos, sem contar o subsídio (igual para todos). Entram os valores que o Portal da Transparência da Câmara publica por deputado e por ano: cota parlamentar, verba de gabinete, auxílio-moradia (pago em dinheiro) e viagens oficiais. O total é dividido pelos meses de exercício e comparado ao de TODOS os deputados do país, e não só aos do mesmo estado: menos custo dá pontuação maior. Não medidos, por não haver valor publicado por deputado: ajuda de custo, plano de saúde (Pró-Saúde), serviço gráfico, encargos dos secretários parlamentares (13º, férias, auxílio-alimentação) e o uso de imóvel funcional (a Câmara publica só os dias de ocupação, sem valor em reais). Estes itens não são somados como zero: simplesmente não entram na conta. Ausência de lançamento na fonte (por exemplo, nenhuma viagem oficial) significa que a Câmara não publicou gasto, não que o Placar preencheu um dado. Limites: o limite mensal da cota varia por estado (por causa do preço das passagens até Brasília), e Mesa e Presidência da Câmara têm benefícios adicionais; o custo mede quanto saiu dos cofres, não o que o deputado entregou, e gasto dentro das regras faz parte do mandato.' }
     ]
   },
 
-  // Deputados estaduais: mesmos critérios e pesos dos federais, mas só entra o que a Assembleia publica e o Placar consegue ler.
-  // Hoje só a Alesp (São Paulo) tem leitor, e só para o uso da verba de gabinete. O índice é sempre parcial e é comparado
-  // apenas com os colegas da mesma Assembleia (a posição, também).
-  estaduais: {
-    nome: 'Índice parcial de deputado estadual',
+  // Senadores (versão 8): mesmos critérios e pesos dos deputados federais, no que as fontes do Senado permitem medir.
+  // Critério sem fonte confirmada fica "sem dado" e os pesos dos demais são refeitos; o índice é sempre marcado como parcial
+  // quando faltar critério. Comparação: entre todos os senadores em exercício.
+  senadores: {
+    nome: 'Índice do senador',
     janelaAnos: 4,
-    minMeses: 12,      // menos meses de despesas que isso: o critério não entra (histórico insuficiente; zero não é nota baixa)
-    minColegas: 10,    // menos deputados com dado que isso na Assembleia: não há comparação
-    minCriterios: 1,   // o índice sai com 1 critério, sempre marcado como parcial (aumente aqui para exigir mais)
+    minMesesAprovados: 12,
+    minMesesCusto: 3,
+    minVotacoes: 20,   // abaixo disso as votações nominais não entram (poucas votações no período)
+    minCriterios: 2,   // com menos de 2 critérios o índice não sai (o índice é sempre parcial e mostra quantos entraram)
     componentes: [
-      { k: 'cota', rotulo: 'Uso da verba de gabinete', peso: 30, regra: 'Gasto médio mensal da verba de gabinete entre o primeiro e o último mês com despesa registrada nos últimos 4 anos, comparado ao dos colegas da mesma Assembleia (menos gasto = pontuação maior). Exige pelo menos 12 meses e 10 deputados com dado. Lido hoje só da Alesp (São Paulo).' },
-      { k: 'vot', rotulo: 'Votações', peso: 20, regra: 'Participação nas votações nominais do plenário. Só entra quando a Assembleia publica o voto de cada deputado. Ainda não há leitura integrada em nenhuma casa.' },
-      { k: 'pres', rotulo: 'Presença', peso: 20, regra: 'Presença em plenário. Só entra quando a Assembleia publica a presença por deputado em formato que o Placar consegue ler. Ainda não há leitura integrada em nenhuma casa.' },
-      { k: 'aprov', rotulo: 'Projetos aprovados', peso: 30, regra: 'Projetos de autoria do deputado que viraram lei ou foram aprovados pelo plenário. Só entra quando a Assembleia publica autoria e situação de cada projeto em formato que o Placar consegue ler. Ainda não há leitura integrada em nenhuma casa.' }
+      { k: 'aprov', rotulo: 'Projetos aprovados', peso: 30,
+        regra: 'Matérias de autoria do senador (sozinho ou em coautoria) apresentadas nos últimos 4 anos que hoje constam como aprovadas pelo Plenário do Senado ou transformadas em norma jurídica, segundo a situação publicada pelo Senado. O número é dividido pelos anos de exercício e comparado ao dos demais senadores. Quem tem menos de 12 meses de exercício no período fica sem este critério (zero no começo do mandato não é desempenho negativo). Mede quantidade de matérias aprovadas, não a importância de cada uma.' },
+      { k: 'vot', rotulo: 'Votações nominais', peso: 15,
+        regra: 'Porcentagem das votações nominais do Plenário do Senado, nos últimos 4 anos, em que o senador registrou voto (Sim, Não ou Abstenção), segundo o Senado. Votação secreta, simbólica ou em que o senador presidia a sessão não entra. Quem tem menos de 20 votações nominais no período fica sem este critério.' },
+      { k: 'pres', rotulo: 'Presença no Plenário', peso: 20,
+        regra: 'Porcentagem das sessões deliberativas do Plenário com presença registrada. Só entra quando o Placar consegue ler e conferir a presença por senador numa fonte oficial. Se não conseguir, aparece "Dado não encontrado ou não confirmado" e o critério fica de fora, sem virar nota zero.' },
+      { k: 'comis', rotulo: 'Presença em comissões', peso: 10,
+        regra: 'Porcentagem das reuniões deliberativas das comissões permanentes do Senado em que o senador, como titular, teve presença registrada. Só entra quando o Placar consegue ler e conferir a presença por reunião numa fonte oficial. Se não conseguir, aparece "Dado não encontrado ou não confirmado" e o critério fica de fora, sem virar nota zero.' },
+      { k: 'custo', rotulo: 'Custo para os cofres públicos', peso: 25,
+        regra: 'Quanto o senador custou aos cofres públicos por mês de exercício nos últimos 4 anos, sem contar o subsídio (igual para todos). Nesta versão só entra a cota para o exercício da atividade parlamentar (CEAPS), que o Senado publica por senador, mês a mês. O total é dividido pelos meses de exercício (pelos períodos de exercício que o Senado publica para cada senador; quando só as datas do mandato estão disponíveis, o perfil avisa que licenças não foram descontadas) e comparado ao dos demais senadores em exercício: menos custo dá pontuação maior. Não medidos nesta versão, porque o Placar ainda não lê um valor por senador de fonte conferida: auxílio-moradia, remuneração do pessoal do gabinete, missões e viagens oficiais pagas diretamente pelo Senado, assistência à saúde (o Senado publica só o total mensal, sem separar por senador) e o uso de apartamento funcional. Estes itens não são somados como zero: simplesmente não entram na conta. Limites: valores recentes podem ainda não ter sido publicados, o que vale para todos os senadores; o custo mede quanto saiu dos cofres, não o que o senador entregou, e gasto dentro das regras faz parte do mandato.' }
     ]
   },
 
@@ -98,6 +112,31 @@ export const METODO = {
     ]
   }
 };
+
+// ARQUIVADO NA v8: deputados estaduais saíram do Placar. As regras ficam guardadas aqui para uma página própria, mais adiante.
+export const METODO_ARQUIVADO = {
+  // Deputados estaduais: mesmos critérios e pesos dos federais, mas só entra o que a Assembleia publica e o Placar consegue ler.
+  // Hoje só a Alesp (São Paulo) tem leitor, e só para o uso da verba de gabinete. O índice é sempre parcial e é comparado
+  // apenas com os colegas da mesma Assembleia (a posição, também).
+  estaduais: {
+    nome: 'Índice parcial de deputado estadual',
+    janelaAnos: 4,
+    minMeses: 12,      // menos meses de despesas que isso: o critério não entra (histórico insuficiente; zero não é nota baixa)
+    minColegas: 10,    // menos deputados com dado que isso na Assembleia: não há comparação
+    minCriterios: 1,   // o índice sai com 1 critério, sempre marcado como parcial (aumente aqui para exigir mais)
+    componentes: [
+      { k: 'cota', rotulo: 'Uso da verba de gabinete', peso: 30, regra: 'Gasto médio mensal da verba de gabinete entre o primeiro e o último mês com despesa registrada nos últimos 4 anos, comparado ao dos colegas da mesma Assembleia (menos gasto = pontuação maior). Exige pelo menos 12 meses e 10 deputados com dado. Lido hoje só da Alesp (São Paulo).' },
+      { k: 'vot', rotulo: 'Votações', peso: 20, regra: 'Participação nas votações nominais do plenário. Só entra quando a Assembleia publica o voto de cada deputado. Ainda não há leitura integrada em nenhuma casa.' },
+      { k: 'pres', rotulo: 'Presença', peso: 20, regra: 'Presença em plenário. Só entra quando a Assembleia publica a presença por deputado em formato que o Placar consegue ler. Ainda não há leitura integrada em nenhuma casa.' },
+      { k: 'aprov', rotulo: 'Projetos aprovados', peso: 30, regra: 'Projetos de autoria do deputado que viraram lei ou foram aprovados pelo plenário. Só entra quando a Assembleia publica autoria e situação de cada projeto em formato que o Placar consegue ler. Ainda não há leitura integrada em nenhuma casa.' }
+    ]
+  }
+};
+
+/** O que vai para dados/metodo.json (o que o site mostra na página Metodologia). */
+export function metodoPublicado(extra = {}) {
+  return { ...METODO, ...extra };
+}
 
 export function pesoDe(grupo, k) {
   return METODO[grupo].componentes.find((c) => c.k === k).peso;

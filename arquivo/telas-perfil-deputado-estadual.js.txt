@@ -1,0 +1,46 @@
+/* ARQUIVADO NA v8 — não é carregado pelo site.
+   Perfil de deputado estadual (ficha + índice parcial). Guardado para a página própria de prefeitos, vereadores e
+   deputados estaduais, que pode vir mais adiante. */
+
+function fichaCartao(item) {
+  const ficha = fichaHtml([
+    ['Idade', item.idade ? `${item.idade} anos` : ''],
+    ['Escolaridade', item.instrucao],
+    ['Ocupação declarada', item.ocupacao]
+  ]);
+  return ficha.s ? html`<section class="cartao"><h2 class="painel-titulo">Quem é ${selo('oficial')}</h2>${ficha}<p class="nota" style="margin-top:8px">Dados declarados ao TSE na candidatura.</p></section>` : html``;
+}
+
+/* =====================================================================
+   Deputado estadual: índice parcial onde a Assembleia publica dados
+   ===================================================================== */
+
+async function viewEleito(cargo, uf, id, token) {
+  const c = CARGOS[cargo];
+  const voltar = [`#/${cargo}`, c.rotulo];
+  mostrar(app, esqueletoPerfil(...voltar));
+  let dado;
+  try { dado = await lerArquivo(`${cargo}-${uf}.json`); } catch (e) {
+    console.error(e);
+    if (token === rotaToken) { mostrar(app, html`<div id="erro"></div>`); mostrarErro($('#erro'), 'Não foi possível carregar esta página.', () => viewEleito(cargo, uf, id, token)); }
+    return;
+  }
+  if (token !== rotaToken) return;
+  const item = dado.itens.find(i => i.id === String(id));
+  if (!item) return naoEncontrado(...voltar, c.singular);
+  document.title = `${item.nome} · Placar Público`;
+  const lugar = item.municipio ? `${item.municipio}/${uf}` : (NOMES_UF[uf] || uf);
+
+  mostrar(app, html`
+    <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
+    ${heroPerfil({ item, cargoTxt: `${c.singular} · ${lugar}`, meta: `${item.partido || 'Sem partido'}${item.urna && item.urna !== item.nome ? ' · nome de urna: ' + item.urna : ''}`, selos: [html`<span class="distintivo">${item.situacao || 'Eleito(a)'} em ${dado.ano}</span>`, item.nota != null ? html`<span class="distintivo distintivo-neutro">Índice parcial: ${item.parcial ? `${item.parcial.usadas} de ${item.parcial.total} critérios` : 'dados da Assembleia'}${item.rank != null ? ` · ${fmtNum.format(item.rank)}º na Assembleia` : ''}</span>` : html`<span class="distintivo distintivo-neutro">Sem índice por enquanto</span>`], anelNota: item.nota != null })}
+    ${item.nota != null ? cartaoIndice(item, 'estaduais') : html`<section class="cartao">
+      <h2 class="painel-titulo">Sem índice por enquanto</h2>
+      <p class="painel-sub" style="margin:0">${item.motivo || 'A Assembleia deste estado ainda não tem leitura integrada ao Placar.'}</p>
+      <p class="nota">O Placar só calcula índice com dados que consegue ler de fonte oficial e comparar de forma justa entre os colegas da mesma Assembleia. Ausência de dado não é nota baixa. <a href="#/fontes">Situação de cada Assembleia</a>.</p>
+    </section>`}
+    ${item.nota != null && item.fonteDados ? html`<section class="cartao"><h2 class="painel-titulo">De onde vêm os dados do índice ${selo('oficial')}</h2>
+      <p class="painel-sub" style="margin:0">Despesas de gabinete publicadas em dados abertos pela ${item.fonteDados}. O Placar só soma valores por mês e compara com os colegas da mesma Assembleia; não lê nem guarda dados pessoais de fornecedores. <a href="#/fontes">Fontes</a></p></section>` : ''}
+    ${fichaCartao(item)}
+    ${avisoEleitos(dado.ano)}`);
+}

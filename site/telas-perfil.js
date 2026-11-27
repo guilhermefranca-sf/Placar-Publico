@@ -2,12 +2,12 @@
 
 /* =====================================================================
    Placar Público — perfis
-   Deputado federal: cabeçalho com índice, abas (Visão geral, Histórico de
+   Deputado federal: cabeçalho com foto e índice, abas (Visão geral, Histórico de
    mandatos, Projetos, Como votou?, Emendas, Gastos, Fiscalização,
    Notícias, Fontes) e, para o presidente da Câmara, Gestão da Presidência.
-   Governador e prefeito: abas de economia, áreas de governo, gastos,
-   prestação de contas e fontes.
-   Deputado estadual: ficha da lista oficial de eleitos.
+   Senador: Visão geral, Como votou?, Gastos e Fontes (telas-senado.js).
+   Governador: abas de economia, áreas de governo, gastos, prestação de
+   contas e fontes (telas-executivo.js).
    Regra de todas as abas: nada é inventado. Sem dado oficial, aparece a
    mensagem padrão e, quando se sabe, a fonte prevista.
    ===================================================================== */
@@ -58,13 +58,13 @@ function seletorAno(rotulo = 'Ano') {
 }
 
 /* Lista dos critérios do índice, com a barra, o peso e a frase que explica o número.
-   grupo: 'federais' | 'executivos' (governadores e prefeitos) | 'estaduais' | 'presidente'. */
-const UNIDADE_INDICE = { federais: 'critérios', estaduais: 'critérios', executivos: 'áreas', presidente: 'indicadores' };
+   grupo: 'federais' | 'senadores' | 'executivos' (governadores) | 'presidente'. */
+const UNIDADE_INDICE = { federais: 'critérios', senadores: 'critérios', executivos: 'áreas', presidente: 'indicadores' };
 const TEXTO_INDICE = {
-  federais: 'O índice compara o que o deputado fez nos últimos 4 anos com as regras do método: uso da cota parlamentar, votações nominais, presença no plenário e projetos aprovados. Projetos aprovados conta a autoria de proposições que viraram lei ou foram aprovadas, medidas nos dados da Câmara; mede resultado legislativo, não a qualidade do mandato nem o mérito das leis. Quem assumiu depois é avaliado só desde a primeira presença, e licenças e afastamentos registrados pela Câmara não contam contra o deputado.',
+  federais: 'O índice compara o que o deputado fez nos últimos 4 anos com as regras do método: projetos aprovados, votações nominais, presença no Plenário, presença em comissões e custo para os cofres públicos. Projetos aprovados conta a autoria de proposições que viraram lei ou foram aprovadas, medidas nos dados da Câmara; mede resultado legislativo, não a qualidade do mandato nem o mérito das leis. O custo mede quanto saiu dos cofres públicos por mês de exercício, sem o subsídio, comparado com todos os deputados do país; gasto dentro das regras faz parte do mandato, e vários itens não são medidos (veja o cartão de custo). Quem assumiu depois é avaliado só desde a primeira presença, e licenças e afastamentos registrados pela Câmara não contam contra o deputado.',
+  senadores: 'O índice usa os mesmos critérios dos deputados federais, no que as fontes do Senado permitem medir: o que o Placar não consegue confirmar fica como "Dado não encontrado ou não confirmado" e sai da conta, sem virar nota zero. O índice sempre mostra de quantos critérios é feito. Mede resultado legislativo e custo, não a qualidade do mandato nem o mérito das leis, e compara o senador só com os demais senadores em exercício.',
   executivos: 'O índice de serviços públicos compara o município ou o estado com os pares em resultados de saúde, educação, segurança, infraestrutura e saneamento, cada área com 20% do total. Quando uma área não tem dado confiável, ela fica de fora e o índice é calculado com as demais, sempre mostrando de quantas áreas ele é feito. Gasto com pessoal e dívida seguem nas abas, só como informação.',
   executivosAtribuicao: ' Resultados de serviços públicos dependem de vários níveis de governo, de anos anteriores e de fatores que o gestor não controla: o índice não prova mérito nem culpa de quem governa.',
-  estaduais: 'O índice parcial usa só o que a Assembleia publica e o Placar consegue ler, e compara o deputado apenas com os colegas da mesma Assembleia. Os critérios sem dado ficam fora, e o índice mostra de quantos critérios é feito.',
   presidente: 'O índice econômico resume três séries nacionais (inflação, desemprego e dívida pública) durante o governo em exercício. Os resultados da economia dependem de muitos fatores, internos e externos, e não podem ser atribuídos só ao presidente. Não mede saúde, educação, segurança, obras nem as demais áreas do governo federal.'
 };
 
@@ -149,8 +149,8 @@ function medidor({ valor, limite, marcas = [], legenda }) {
 
 function viewPerfil(cargo, uf, id, aba, token) {
   if (cargo === 'federais') return viewFederal(id, aba, token);
-  if (cargo === 'governadores' || cargo === 'prefeitos') return viewExecutivo(cargo, uf, id, aba, token);
-  return viewEleito(cargo, uf, id, token);
+  if (cargo === 'senadores') return viewSenador(id, aba, token);
+  return viewExecutivo('governadores', uf, id, aba, token);
 }
 
 /* Liga as abas de um perfil: troca de painel sem recarregar a página. */
@@ -261,6 +261,59 @@ async function viewFederal(id, abaInicial, token) {
   });
 }
 
+/* Legendas dos cartões de resumo */
+function legendaComissoes(c, desde) {
+  if (!c) return `${MSG_INDISPONIVEL}: a lista de comissões e de seus membros não foi lida nesta atualização`;
+  if (!c.suficiente) return `${MSG_INDISPONIVEL}: só ${plural(c.esperadas, 'reunião deliberativa esperada', 'reuniões deliberativas esperadas')} em comissões permanentes desde ${dataBR(desde)} (o mínimo é 10)`;
+  return `${c.presentes} de ${fmtNum.format(c.esperadas)} reuniões deliberativas de comissões permanentes em que era titular, desde ${dataBR(desde)}${c.licenca ? `, sem contar ${c.licenca} em licença` : ''}`;
+}
+function legendaCusto(e, desde) {
+  const c = e.custo;
+  if (!c) return `${MSG_INDISPONIVEL}: ${e.custoMotivo || 'o Portal da Transparência da Câmara não foi lido para este deputado'}`;
+  if (c.poucosMeses) return `total desde ${dataBR(desde)}, sem o subsídio; só ${dec(c.meses, 1)} meses de exercício, pouco para comparar por mês`;
+  return `${fmtBRL.format(c.total)} desde ${dataBR(desde)} em ${dec(c.meses, 1)} meses de exercício, sem o subsídio`;
+}
+
+/* Cartão "Custo para os cofres públicos": total, custo por mês, detalhe por rubrica e por ano, e o que não é medido.
+   rubricas: [[chave, rótulo]] na ordem da tabela. Vale para deputados federais (e, com outras rubricas, para senadores). */
+const RUBRICAS_CAMARA = [['cota', 'Cota parlamentar'], ['verba', 'Verba de gabinete'], ['moradia', 'Auxílio-moradia'], ['viagens', 'Viagens oficiais']];
+const TEXTO_SEM_LANCAMENTO_CAMARA = '“Sem lançamento” quer dizer que a fonte informa “Ainda não há dados disponíveis” para a rubrica naquele ano: nenhum gasto foi publicado. Ela entra como R$ 0 só na soma do total; o Placar não preencheu nenhum valor.';
+const RESSALVA_CUSTO_CAMARA = 'o limite mensal da cota varia por estado (por causa do preço das passagens), e quem integra a Mesa ou a Presidência tem benefícios adicionais.';
+function cartaoCusto(item, { rubricas = RUBRICAS_CAMARA, naoMedidos = [], fonteTxt, fonteUrl, quem = 'deputado', comparados = 'todos os deputados do país', textoSemLancamento = TEXTO_SEM_LANCAMENTO_CAMARA, ressalva = RESSALVA_CUSTO_CAMARA } = {}) {
+  const e = item.extra || {};
+  const c = e.custo;
+  const comp = (item.comp || []).find(x => x.k === 'custo');
+  const cabeca = html`<h2 class="painel-titulo">Custo para os cofres públicos ${selo('calculado', 'quantitativo')}</h2>`;
+  const naoMed = naoMedidos.length ? html`<p class="nota"><strong>O que não entra nesta conta</strong> (o valor não é publicado por ${quem}, e por isso não é medido nem somado como zero): ${naoMedidos.join('; ')}.</p>` : '';
+  const fonte = fonteTxt ? html`<p class="nota">Fonte: <a href="${urlSegura(fonteUrl)}" target="_blank" rel="noopener">${fonteTxt}</a>. As contas de soma, divisão por mês e comparação são do Placar Público.</p>` : '';
+  if (!c) {
+    return html`<section class="cartao">${cabeca}
+      <p class="painel-sub">Quanto o ${quem} custou aos cofres públicos por mês de exercício, sem contar o subsídio.</p>
+      ${indisponivel(`${e.custoMotivo || 'A leitura da fonte ainda não foi feita para este parlamentar.'} Isso não significa custo zero: o critério fica de fora do índice.`)}
+      ${naoMed}${fonte}</section>`;
+  }
+  const anos = Object.keys(c.anos || {}).sort();
+  const valorRubrica = (a, k) => (c.anos[a].semLancamento || []).includes(k) ? null : c.anos[a][k];
+  const celula = v => (v == null ? html`<span class="painel-sub" style="margin:0">sem lançamento</span>` : fmtBRL.format(v));
+  const temSemLanc = anos.some(a => (c.anos[a].semLancamento || []).length);
+  return html`<section class="cartao">${cabeca}
+    <p class="painel-sub">Quanto o ${quem} custou aos cofres públicos nos últimos 4 anos, sem contar o subsídio (igual para todos), dividido pelos meses de exercício.</p>
+    <div class="numeros">
+      <div class="numero"><span>Por mês de exercício</span><strong>${fmtBRL.format(c.porMes)}</strong><small>${c.poucosMeses ? 'poucos meses de exercício: não entra na comparação' : `em ${dec(c.meses, 1)} meses`}</small></div>
+      <div class="numero"><span>Total no período</span><strong>${fmtBRL.format(c.total)}</strong><small>desde ${dataBR(item.desde)}</small></div>
+    </div>
+    ${comp && comp.f ? html`<p class="painel-sub" style="margin-top:12px">${comp.f}</p>` : ''}
+    <h3 style="margin:16px 0 6px;font-size:1rem">Detalhe por rubrica</h3>
+    <div class="rolagem"><table class="tabela"><thead><tr><th>Ano</th>${rubricas.map(([, r]) => html`<th>${r}</th>`)}</tr></thead>
+      <tbody>${anos.map(a => html`<tr><td>${a}</td>${rubricas.map(([k]) => html`<td>${celula(valorRubrica(a, k))}</td>`)}</tr>`)}
+        <tr><td><strong>Total</strong></td>${rubricas.map(([k]) => html`<td><strong>${fmtBRL.format((c.componentes || {})[k] || 0)}</strong></td>`)}</tr></tbody></table></div>
+    ${temSemLanc ? html`<p class="nota">${textoSemLancamento}</p>` : ''}
+    ${naoMed}
+    <p class="nota"><strong>Como ler:</strong> o custo mede quanto saiu dos cofres públicos, não o que o ${quem} entregou, e gasto dentro das regras faz parte do exercício do mandato. A comparação é com ${comparados}; ${ressalva}</p>
+    ${fonte}
+  </section>`;
+}
+
 /* ---------- Visão geral ---------- */
 
 function painelVisaoFederal(el, ctx) {
@@ -278,7 +331,8 @@ function painelVisaoFederal(el, ctx) {
       ${tile({ icone: 'pessoas', cor: 'verde', rotulo: 'Presença', valor: comp.pres ? dec(comp.pres.s) + '%' : '—', legenda: `${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${dataBR(item.desde)}${e.licenca && e.licenca.sessoes ? `, sem contar ${e.licenca.sessoes} em licença` : ''}`, origem: 'calculado', natureza: 'proporcional' })}
       ${tile({ icone: 'urna', cor: 'azul', rotulo: 'Votações nominais', valor: `${e.votos[0]} de ${e.votos[1]}`, legenda: `votações do Plenário em que registrou voto desde ${dataBR(item.desde)}`, origem: 'calculado', natureza: 'proporcional', href: `#/federais/${id}/votos` })}
       ${tile({ icone: 'arquivo', cor: 'laranja', rotulo: 'Projetos', valor: fmtNum.format(e.projetos), legenda: `projetos e propostas apresentados desde ${dataBR(item.desde)}, como autor ou coautor${e.proj && e.proj.situacaoLida ? ` · ${fmtNum.format(e.proj.aprovadosCasa)} aprovados pela Câmara, ${fmtNum.format(e.proj.leis)} viraram lei` : ''}`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/projetos` })}
-      ${tile({ icone: 'moedas', cor: 'roxo', rotulo: 'Cota parlamentar', valor: reaisCurto(e.gasto), legenda: `gasto desde ${dataBR(item.desde)} (${fmtBRL.format(e.gasto)}, valor dos documentos menos glosas)`, origem: 'calculado', natureza: 'quantitativo', href: `#/federais/${id}/gastos` })}
+      ${tile({ icone: 'pessoas', cor: 'laranja', rotulo: 'Comissões', valor: comp.comis && comp.comis.s != null ? dec(comp.comis.s) + '%' : '—', legenda: legendaComissoes(e.comissoes, item.desde), origem: 'calculado', natureza: 'proporcional', href: `#/federais/${id}/fiscalizacao` })}
+      ${tile({ icone: 'moedas', cor: 'roxo', rotulo: 'Custo para os cofres públicos', valor: e.custo && !e.custo.poucosMeses ? reaisCurto(e.custo.porMes) + ' por mês' : e.custo ? reaisCurto(e.custo.total) : '—', legenda: legendaCusto(e, item.desde), origem: 'calculado', natureza: 'quantitativo' })}
     </div>` : html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Destaques do mandato</h2>
       <p class="painel-sub">${item.motivo || MSG_INDISPONIVEL}</p></section>`}
 
@@ -293,6 +347,7 @@ function painelVisaoFederal(el, ctx) {
       <section class="cartao" id="v-producao"></section>
     </div>
     ${cartaoIndice(item, 'federais')}
+    ${cartaoCusto(item, { naoMedidos: (DADOS.metodo && DADOS.metodo.custoNaoMedidos) || [], fonteTxt: 'Portal da Transparência da Câmara dos Deputados', fonteUrl: `${PORTAL}/transparencia/gastos-parlamentares` })}
     <section class="cartao">
       <h2 class="painel-titulo">Presença no Plenário</h2>
       <p class="painel-sub">Detalhe consultado na Câmara na hora em que você abre.</p>
@@ -605,7 +660,7 @@ function painelEmendas(el) {
 
 async function painelGastosFed(el, ctx, vale) {
   if (ctx.demo) return mostrar(el, html`<section class="cartao" style="margin-top:0"><h2 class="painel-titulo">Gastos</h2>${indisponivel('No modo demonstração a consulta à Câmara fica desligada.')}</section>`);
-  mostrar(el, html`<section class="cartao" style="margin-top:0">${seletorAno()}<div id="g-corpo">${esqueletoLinhas(4)}</div></section>`);
+  mostrar(el, html`<section class="cartao" style="margin-top:0"><p class="painel-sub" style="margin-top:0">Aqui está o detalhe, documento a documento, da cota parlamentar, consultado na Câmara na hora. O custo total que entra no índice (cota, verba de gabinete, auxílio-moradia e viagens) está na <a href="#/federais/${ctx.id}">Visão geral</a>.</p>${seletorAno()}<div id="g-corpo">${esqueletoLinhas(4)}</div></section>`);
   $('#ano').addEventListener('change', e => { estado.ano = Number(e.target.value); salvarAno(estado.ano); perfilAtual.redesenhar(); });
   try {
     const d = await ctx.gastos(estado.ano);
@@ -705,7 +760,8 @@ function painelFontesFed(el, ctx) {
   const f = (DADOS.meta && DADOS.meta.fontes) || {};
   const quando = x => (x && x.atualizadoEm ? dataHoraBR(x.atualizadoEm) : '—');
   const linhas = [
-    ['Índice, presença, votos, projetos e cota (últimos 4 anos)', 'Arquivos abertos da Câmara (eventos, presenças, votações, proposições, cota parlamentar)', 'https://dadosabertos.camara.leg.br/swagger/api.html', 'Todo dia', quando(f.camara)],
+    ['Índice: presença, votos, projetos e presença em comissões (últimos 4 anos)', 'Arquivos abertos da Câmara (eventos, presenças, votações, proposições, órgãos)', 'https://dadosabertos.camara.leg.br/swagger/api.html', 'Todo dia', quando(f.camara)],
+    ['Custo para os cofres públicos (cota, verba de gabinete, auxílio-moradia, viagens)', 'Portal da Transparência da Câmara dos Deputados', 'https://www.camara.leg.br/transparencia/gastos-parlamentares', 'Todo dia (anos fechados ficam guardados)', quando(f.custo)],
     ['Como votou?', 'Dados Abertos da Câmara (votações e votos)', `${API}/votacoes`, 'Todo dia', quando(f.camara)],
     ['Histórico de mandatos, Mesa Diretora, dados cadastrais', 'Dados Abertos da Câmara (histórico do deputado, legislaturas)', `${API}/deputados/${ctx.id}/historico`, 'Toda semana', quando(f.historico)],
     ['Projetos por ano, lista de proposições, presença detalhada, gastos, comissões', 'Dados Abertos da Câmara, consultados na hora em que a aba é aberta', `${API}/deputados/${ctx.id}`, 'Ao vivo', 'na hora'],
@@ -755,38 +811,4 @@ function fichaCartao(item) {
     ['Ocupação declarada', item.ocupacao]
   ]);
   return ficha.s ? html`<section class="cartao"><h2 class="painel-titulo">Quem é ${selo('oficial')}</h2>${ficha}<p class="nota" style="margin-top:8px">Dados declarados ao TSE na candidatura.</p></section>` : html``;
-}
-
-/* =====================================================================
-   Deputado estadual: índice parcial onde a Assembleia publica dados
-   ===================================================================== */
-
-async function viewEleito(cargo, uf, id, token) {
-  const c = CARGOS[cargo];
-  const voltar = [`#/${cargo}`, c.rotulo];
-  mostrar(app, esqueletoPerfil(...voltar));
-  let dado;
-  try { dado = await lerArquivo(`${cargo}-${uf}.json`); } catch (e) {
-    console.error(e);
-    if (token === rotaToken) { mostrar(app, html`<div id="erro"></div>`); mostrarErro($('#erro'), 'Não foi possível carregar esta página.', () => viewEleito(cargo, uf, id, token)); }
-    return;
-  }
-  if (token !== rotaToken) return;
-  const item = dado.itens.find(i => i.id === String(id));
-  if (!item) return naoEncontrado(...voltar, c.singular);
-  document.title = `${item.nome} · Placar Público`;
-  const lugar = item.municipio ? `${item.municipio}/${uf}` : (NOMES_UF[uf] || uf);
-
-  mostrar(app, html`
-    <a class="voltar" href="${voltar[0]}">${icone('voltar', 16)}${voltar[1]}</a>
-    ${heroPerfil({ item, cargoTxt: `${c.singular} · ${lugar}`, meta: `${item.partido || 'Sem partido'}${item.urna && item.urna !== item.nome ? ' · nome de urna: ' + item.urna : ''}`, selos: [html`<span class="distintivo">${item.situacao || 'Eleito(a)'} em ${dado.ano}</span>`, item.nota != null ? html`<span class="distintivo distintivo-neutro">Índice parcial: ${item.parcial ? `${item.parcial.usadas} de ${item.parcial.total} critérios` : 'dados da Assembleia'}${item.rank != null ? ` · ${fmtNum.format(item.rank)}º na Assembleia` : ''}</span>` : html`<span class="distintivo distintivo-neutro">Sem índice por enquanto</span>`], anelNota: item.nota != null })}
-    ${item.nota != null ? cartaoIndice(item, 'estaduais') : html`<section class="cartao">
-      <h2 class="painel-titulo">Sem índice por enquanto</h2>
-      <p class="painel-sub" style="margin:0">${item.motivo || 'A Assembleia deste estado ainda não tem leitura integrada ao Placar.'}</p>
-      <p class="nota">O Placar só calcula índice com dados que consegue ler de fonte oficial e comparar de forma justa entre os colegas da mesma Assembleia. Ausência de dado não é nota baixa. <a href="#/fontes">Situação de cada Assembleia</a>.</p>
-    </section>`}
-    ${item.nota != null && item.fonteDados ? html`<section class="cartao"><h2 class="painel-titulo">De onde vêm os dados do índice ${selo('oficial')}</h2>
-      <p class="painel-sub" style="margin:0">Despesas de gabinete publicadas em dados abertos pela ${item.fonteDados}. O Placar só soma valores por mês e compara com os colegas da mesma Assembleia; não lê nem guarda dados pessoais de fornecedores. <a href="#/fontes">Fontes</a></p></section>` : ''}
-    ${fichaCartao(item)}
-    ${avisoEleitos(dado.ano)}`);
 }

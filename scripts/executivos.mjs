@@ -18,14 +18,15 @@ import { lerIbge, lerSeriesNacionais } from './ibge.mjs';
 import { coletarSeries } from './series-fiscais.mjs';
 import { carregarEntes } from './siconfi.mjs';
 import { montarExecutivoEnte, montarPresidente, contextoDoEnte, catalogoPublico, anosDaJanela } from './indicadores.mjs';
+import { montarRankingEstados } from './ranking-estados.mjs';
 
 const arq = (pasta, n) => path.join(pasta, n);
 
 /** Semanal: lê os arquivos do TSE, aplica a curadoria e guarda as gestões por UF. */
 export async function atualizarAdministracoes({ baixarZip, pasta, hoje, trocas, log }) {
   const janela = janelaDe48Meses(hoje);
-  log(`Gestões: montando a linha do tempo de prefeitos, governadores e presidente (${janela.de} a ${janela.ate})...`);
-  const adm = await gerarAdministracoes({ baixarZip, hoje, trocas, janela });
+  log(`Gestões: montando a linha do tempo de governadores e presidente (${janela.de} a ${janela.ate})...`);
+  const adm = await gerarAdministracoes({ baixarZip, hoje, trocas, janela, incluirPrefeitos: false });
   for (const w of adm.avisos.slice(0, 20)) log('Gestões aviso: ' + w);
   for (const uf of UFS) {
     const municipios = adm.prefeitos[uf] || {};
@@ -35,7 +36,7 @@ export async function atualizarAdministracoes({ baixarZip, pasta, hoje, trocas, 
   }
   if (adm.presidente) gravarJson(arq(pasta, 'administracoes-BR.json'), { geradoEm: hoje.toISOString(), janela, presidente: adm.presidente });
   const nMun = Object.values(adm.prefeitos).reduce((a, m) => a + Object.keys(m).length, 0);
-  return { ok: nMun > 0 || Object.keys(adm.governadores).length > 0, municipios: nMun, governadores: Object.keys(adm.governadores).length,
+  return { ok: Object.keys(adm.governadores).length > 0, municipios: nMun, governadores: Object.keys(adm.governadores).length,
     presidente: !!adm.presidente, trocas: adm.trocasAplicadas.length, avisos: adm.avisos.length, anos: adm.anos };
 }
 
@@ -72,7 +73,7 @@ export async function atualizarExecutivos({ json, pasta, hoje, exercicio, orcame
 
   if (orcamentoMs > 0) {
     try {
-      const entes = (await carregarEntes(json)).filter((e) => e.esfera === 'M' || e.esfera === 'E' || e.esfera === 'D');
+      const entes = (await carregarEntes(json)).filter((e) => e.esfera === 'E' || e.esfera === 'D'); // só estados e DF: prefeituras saíram na versão 8
       const cache = { ler: (a) => lerJsonSeExistir(arq(pasta, `anos/siconfi-${a}.json`)), gravar: (a, o) => gravarJson(arq(pasta, `anos/siconfi-${a}.json`), o) };
       const r = await coletarSeries({ json, entes, anos, cache, hoje, orcamentoMs, prefill, aoAndar: (m) => log('  ' + m) });
       resumo.coleta = { feitos: r.feitos, pendentes: r.pendentes, parouPorTempo: r.parouPorTempo };
@@ -105,16 +106,27 @@ export async function atualizarExecutivos({ json, pasta, hoje, exercicio, orcame
     }
   }
   const govs = lerJsonSeExistir(arq(pasta, 'governadores.json'));
+  const perfisGov = [];
   for (const g of govs?.itens || []) {
     const cidadesG = lerJsonSeExistir(arq(pasta, `anos/cidades-${g.uf}.json`))?.itens?.[g.ibge] || null;
     const gestoes = lerJsonSeExistir(arq(pasta, `administracoes-${g.uf}.json`))?.estado?.gestoes;
     if (!g.ibge || !gestoes?.length) { if (g.ibge) resumo.semGestao++; continue; }
-    gravarJson(arq(pasta, `executivos/${g.ibge}.json`), montarExecutivoEnte({
+    const perfil = montarExecutivoEnte({
       cargo: 'governador', ente: { cod_ibge: g.ibge, esfera: g.uf === 'DF' ? 'D' : 'E', populacao: g.populacao }, nome: `Estado ${g.uf}`, uf: g.uf, gestoes,
       registros: doEnte(g.ibge), janela, hoje, exercicio, contexto: contextoDoEnte(g.ibge, ibge), entregas: g.contas?.entregas ?? null,
       cidades: cidadesG
-    }));
+    });
+    gravarJson(arq(pasta, `executivos/${g.ibge}.json`), perfil);
+    perfisGov.push({ uf: g.uf, perfil });
     resumo.ente++;
+  }
+  // Ranking entre os estados nos temas sem nota (serviços básicos, economia, orçamento e transparência).
+  if (perfisGov.length) {
+    try {
+      const rk = montarRankingEstados(perfisGov, hoje);
+      gravarJson(arq(pasta, 'ranking-estados.json'), rk);
+      log(`Ranking entre os estados: ${rk.metricas.filter((m) => m.de > 0).length} de ${rk.metricas.length} métricas comparadas entre ${rk.estados} estados.`);
+    } catch (e) { log(`Ranking entre os estados: FALHOU. ${e.message}`); }
   }
   gravarJson(arq(pasta, 'indicadores.json'), catalogoPublico());
   return resumo;

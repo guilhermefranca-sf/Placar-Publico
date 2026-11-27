@@ -9,11 +9,11 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { atualizar, exercicioDoTesouro, registrarCorrecoes } from '../atualizar.mjs';
 import { gerarFederais, classificarSituacao } from '../federais.mjs';
-import { UFS } from '../tse.mjs';
+import { UFS, lerEleitos } from '../tse.mjs';
 import { indexarEntes, acharMunicipioParecido, distancia } from '../siconfi.mjs';
 import { coletarSeries, precisaBuscar, extrairDca } from '../series-fiscais.mjs';
 
-process.env.PLACAR_ESPERA_MS = '0'; // no teste, a segunda tentativa das consultas que falharam não precisa esperar
+process.env.PLACAR_ESPERA_MS = '0'; process.env.PLACAR_PAUSA_MS = '0'; // no teste, a segunda tentativa das consultas que falharam não precisa esperar
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'placar-teste-'));
 const saida = path.join(tmp, 'dados');
@@ -35,12 +35,47 @@ const perfil = (i) => ({ pres: 100 - ((i * 7) % 60), vot: 100 - ((i * 11) % 70),
 const SESSOES = 60;
 const dataSessao = (s) => new Date(Date.UTC(2026, 1, 3 + s * 5)).toISOString().slice(0, 10);
 
+/* ---------- Comissões permanentes de mentira ---------- */
+// 4 comissões permanentes, 14 reuniões deliberativas por comissão e por ano; titulares com período de início e fim.
+const COMISSOES = [2001, 2002, 2003, 2004];
+const REUNIOES = 14;
+const dataReuniao = (k) => new Date(Date.UTC(2026, 1, 10 + k * 18)).toISOString().slice(0, 10);
+const idReuniao = (c, k) => `E2026_${c}_${k}`;
+const perfilComis = (i) => 100 - ((i * 3) % 70);
+const compareceuComissao = (i, c, k) => i !== 502 && ((i * 37 + k * 11 + c) % 100) < perfilComis(i);
+const linhasEventosComissao = [
+  ...COMISSOES.flatMap((c) => Array.from({ length: REUNIOES }, (_, k) => [idReuniao(c, k), '', '', dataReuniao(k) + 'T10:00:00', '', 'Encerrada (Final)', 'reunião', 'Reunião Deliberativa', '', 'Sala ' + c])),
+  ['EA1', '', '', '2026-04-10T10:00:00', '', 'Encerrada (Final)', 'audiência', 'Audiência Pública', '', 'Sala 2001'],       // não é deliberativa
+  ['EC1', '', '', '2026-04-11T10:00:00', '', 'Cancelada', 'reunião', 'Reunião Deliberativa', '', 'Sala 2001'],               // cancelada
+  ['ENP1', '', '', '2026-04-12T10:00:00', '', 'Encerrada (Final)', 'reunião', 'Reunião Deliberativa', '', 'Sala especial']  // comissão que não é permanente
+];
+const eventosOrgaos = csv(['idEvento', 'uriEvento', 'idOrgao', 'uriOrgao', 'siglaOrgao'], [
+  ...COMISSOES.flatMap((c) => Array.from({ length: REUNIOES }, (_, k) => [idReuniao(c, k), '', c, `https://dadosabertos.camara.leg.br/api/v2/orgaos/${c}`, 'C' + c])),
+  ['EA1', '', 2001, '', 'C2001'], ['EC1', '', 2001, '', 'C2001'], ['ENP1', '', 3001, '', 'CESP'],
+  ...Array.from({ length: SESSOES }, (_, s) => [`S${s}`, '', 180, '', 'PLEN'])
+]);
+// Membros titulares: cada deputado, de 2023-03-01 em diante, na comissão COMISSOES[i % 4]. Exceções para testar as regras.
+const membrosL57 = (() => {
+  const L = [];
+  const lin = (org, i, cargo, ini, fim) => [`https://dadosabertos.camara.leg.br/api/v2/orgaos/${org}`, 'C' + org, '', '', `https://dadosabertos.camara.leg.br/api/v2/deputados/${100000 + i}`, 'Deputado ' + i, 'AAA', 'SP', cargo, ini, fim];
+  for (let i = 0; i < 513; i++) {
+    if (i % 10 === 5) continue;                                                       // não é membro de nenhuma comissão
+    const org = COMISSOES[i % 4];
+    if (i === 11) L.push(lin(org, i, 'Titular', '2023-03-01', '2024-06-30'));         // saiu da comissão em 30/06/2024
+    else if (i === 503) L.push(lin(org, i, 'Titular', '2026-09-01', ''));             // entrou há pouco: poucas reuniões
+    else L.push(lin(org, i, i % 17 === 0 ? 'Presidente' : 'Titular', '2023-03-01', ''));
+    if (i % 10 === 0) L.push(lin(COMISSOES[(i + 1) % 4], i, 'Suplente', '2023-03-01', '')); // suplente não conta
+  }
+  return csv(['uriOrgao', 'siglaOrgao', 'nomeOrgao', 'nomePublicacaoOrgao', 'uriDeputado', 'nomeDeputado', 'siglaPartido', 'siglaUF', 'cargo', 'dataInicio', 'dataFim'], L);
+})();
+
 const eventos = csv(['id', 'uri', 'urlDocumentoPauta', 'dataHoraInicio', 'dataHoraFim', 'situacao', 'descricao', 'descricaoTipo', 'localExterno', 'localCamara.nome'],
   [
     ...Array.from({ length: SESSOES }, (_, s) => [`S${s}`, '', '', dataSessao(s) + 'T14:00:00', '', 'Encerrada', 'sessão', 'Sessão Deliberativa', '', 'Plenário da Câmara dos Deputados']),
     ['SX1', '', '', '2026-03-03T10:00:00', '', 'Cancelada', 'sessão', 'Sessão Deliberativa', '', 'Plenário da Câmara dos Deputados'],
     ['SX2', '', '', '2026-03-04T10:00:00', '', 'Encerrada', 'sessão', 'Sessão Não Deliberativa Solene', '', 'Plenário da Câmara dos Deputados'],
-    ['CX1', '', '', '2026-03-05T10:00:00', '', 'Encerrada (Final)', 'comissão', 'Reunião Deliberativa', '', 'Anexo II, Plenário 10']
+    ['CX1', '', '', '2026-03-05T10:00:00', '', 'Encerrada (Final)', 'comissão', 'Reunião Deliberativa', '', 'Anexo II, Plenário 10'],
+    ...linhasEventosComissao
   ]);
 
 // i=500: assumiu tarde (só as últimas 15 sessões -> sem nota). i=501: primeira presença na sessão 12. i=502: nunca apareceu.
@@ -53,6 +88,8 @@ function presente(i, s) {
 const presencaRows = [];
 for (let i = 0; i < N_DEP; i++) for (let s = 0; s < SESSOES; s++) if (presente(i, s)) presencaRows.push([`S${s}`, '', dataSessao(s) + 'T14:05:00', 100000 + i, '']);
 presencaRows.push(['CX1', '', '2026-03-05T10:00:00', 100003, '']); // presença em comissão não conta
+// Presença nas reuniões das comissões permanentes: todos podem comparecer, mas só conta quem é titular (a regra está no código).
+for (let i = 0; i < N_DEP; i++) for (const c of COMISSOES) for (let k = 0; k < REUNIOES; k++) if (compareceuComissao(i, c, k)) presencaRows.push([idReuniao(c, k), '', dataReuniao(k) + 'T10:05:00', 100000 + i, '']);
 const presenca = csv(['idEvento', 'uriEvento', 'dataHoraInicio', 'idDeputado', 'uriDeputado'], presencaRows);
 
 const VOT_PLEN = 40;
@@ -89,11 +126,26 @@ const donoDoPL = autRows.find((a) => a[0] === primeiroPL[0])[1];
 const COAUTOR = donoDoPL === 100001 ? 100002 : 100001;
 const autores = csv(['idProposicao', 'idDeputadoAutor'], [...autRows, [primeiroPL[0], COAUTOR], [primeiroPL[0], COAUTOR], ['999999', '']]);
 
-const cotaRows = [];
-for (let i = 0; i < N_DEP; i++) for (let m = 1; m <= 10; m++) cotaRows.push([100000 + i, 2026, m, perfil(i).gasto + 100, 100]);
-cotaRows.push(['', 2026, 1, 99999, 0]); // liderança, sem deputado
-cotaRows.push([100001, 2025, 1, 999999, 0]); // outro ano
-const cotas = csv(['ideCadastro', 'numAno', 'numMes', 'vlrDocumento', 'vlrGlosa'], cotaRows);
+/* ---------- Portal da Transparência da Câmara de mentira (uma página por deputado e ano) ---------- */
+const PORTAL = 'https://www.camara.leg.br/transparencia/gastos-parlamentares';
+const cotaPortal = (i, a) => 50000 + ((i * 977 + a) % 200000);
+const verbaPortal = (i, a) => 700000 + ((i * 131 + a) % 300000);
+const moradiaPortal = (i) => (i % 4 === 0 ? 6000 + (i % 7) * 100 : null);   // null = "Ainda não há dados disponíveis"
+const viagensPortal = (i, a) => (i % 3 === 0 ? 1000 + ((i * 13 + a) % 5000) : null);
+const custoAno = (i, a) => cotaPortal(i, a) + verbaPortal(i, a) + (moradiaPortal(i) || 0) + (viagensPortal(i, a) || 0);
+const brl = (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const chamadasPortal = { n: 0, porAno: {} };
+function paginaPortal(url) {
+  const q = new URL(url).searchParams;
+  const a = Number(q.get('ano'));
+  const i = Number(q.get('deputado')) - 100000;
+  chamadasPortal.n++; chamadasPortal.porAno[a] = (chamadasPortal.porAno[a] || 0) + 1;
+  if (i === 10 && a === 2024) throw new Error('HTTP 500 em ' + url);                  // falha permanente de propósito: o deputado fica sem o critério
+  if (i >= 500 && a < 2026) return '<html><body>' + 'Esta página não tem gastos deste deputado. '.repeat(20) + '</body></html>'; // ainda não era deputado
+  const f = (rot, v) => `<p>Em ${a} , na legislatura 57 , gasto do deputado Teste ${i} com ${rot}: ${v == null ? 'Ainda não há dados disponíveis' : brl(v)}</p>`;
+  return '<html><body><h1>Gastos parlamentares</h1><p>' + 'Texto de apoio do portal. '.repeat(30) + '</p>'
+    + f('cota', cotaPortal(i, a)) + f('verba de gabinete', verbaPortal(i, a)) + f('auxílio-moradia', moradiaPortal(i)) + f('viagens oficiais', viagensPortal(i, a)) + '</body></html>';
+}
 
 /* ---------- TSE de mentira (zips de verdade, em windows-1252) ---------- */
 const CAB_TSE = ['ANO_ELEICAO', 'NR_TURNO', 'SG_UF', 'SG_UE', 'NM_UE', 'DS_CARGO', 'SQ_CANDIDATO', 'NM_CANDIDATO', 'NM_URNA_CANDIDATO', 'SG_PARTIDO', 'DT_NASCIMENTO', 'DS_GRAU_INSTRUCAO', 'DS_OCUPACAO', 'DS_SIT_TOT_TURNO'];
@@ -244,6 +296,7 @@ function respostaDca(url) {
   const ano = Number(p.get('an_exercicio'));
   chamadasDca.n++; chamadasDca.porAno[ano] = (chamadasDca.porAno[ano] || 0) + 1;
   if (p.get('no_anexo') !== 'DCA-Anexo I-E') return { items: [] };
+  if (id === 17 && ano === 2025) throw new Error('HTTP 503 em ' + url); // falha permanente de propósito (Tocantins, 2025)
   if (id % 17 === 0 && !dcaFalhou.has(`${id}|${ano}`)) { dcaFalhou.add(`${id}|${ano}`); throw new Error('HTTP 503 em ' + url); }
   if (id % 11 === 0) return { items: [] }; // este ente não entregou o balanço
   const pop = popDca(id, ano);
@@ -310,10 +363,20 @@ function respostaBcb(url) {
   return mesesDe(dd(q.get('dataInicial')), dd(q.get('dataFinal'))).map((x, k) => ({ data: `01/${x.slice(5)}/${x.slice(0, 4)}`, valor: String((n === '13762' ? 70 : 10) + k / 10) }));
 }
 
+// Banco Mundial de mentira: 200 países (o Brasil é o 1º) mais um agrupamento. O Brasil vale 50; o país de índice i vale i.
+function respostaBancoMundial(url) {
+  const iso = (i) => (i === 0 ? 'BRA' : 'P' + String(i).padStart(3, '0'));
+  if (/\/country\?format=json/.test(url)) return [{ page: 1, pages: 1 }, [...Array.from({ length: 200 }, (_, i) => ({ id: iso(i), region: { id: 'LCN', value: 'Latin America' } })), { id: 'WLD', region: { id: 'NA', value: 'Aggregates' } }]];
+  const ind = /indicator\/([A-Z0-9.]+)\?/.exec(url)[1];
+  if (!ind) throw new Error('HTTP 404 em ' + url);
+  return [{ page: 1, pages: 1 }, [...Array.from({ length: 200 }, (_, i) => ({ countryiso3code: iso(i), country: { value: i === 0 ? 'Brasil' : iso(i) }, date: '2022', value: i === 0 ? 50 : i })), { countryiso3code: 'WLD', country: { value: 'Mundo' }, date: '2023', value: 999 }]];
+}
+
 const API = 'https://dadosabertos.camara.leg.br/api/v2';
 const ARQ = 'https://dadosabertos.camara.leg.br/arquivos';
 const arquivosTexto = {
   [`${ARQ}/eventos/csv/eventos-2026.csv`]: eventos,
+  [`${ARQ}/eventosOrgaos/csv/eventosOrgaos-2026.csv`]: eventosOrgaos,
   [`${ARQ}/eventosPresencaDeputados/csv/eventosPresencaDeputados-2026.csv`]: presenca,
   [`${ARQ}/votacoes/csv/votacoes-2026.csv`]: votacoes,
   [`${ARQ}/votacoesVotos/csv/votacoesVotos-2026.csv`]: votos,
@@ -327,6 +390,7 @@ const lidos = [];
 for (const a of [2023, 2024, 2025]) {
   for (const [url, texto] of Object.entries({ ...arquivosTexto })) arquivosTexto[url.replace('2026', a)] = doAno(texto, a);
 }
+arquivosTexto[`${ARQ}/orgaosDeputados/csv/orgaosDeputados-L57.csv`] = membrosL57; // um só arquivo para a legislatura inteira
 // Histórico no mesmo formato da API real: eventos de posse, licença, retorno e fim.
 const historicoDe = (id) => {
   const i = id - 100000;
@@ -337,17 +401,34 @@ const historicoDe = (id) => {
   const antigo = i % 3 === 0 ? [{ ...ev('2015-02-01T00:00', 'Exercício', 'Entrada - Posse - Início de mandato'), idLegislatura: 55 }, { ...ev('2019-01-31T00:00', 'Fim de Mandato', 'Saída - Término da legislatura'), idLegislatura: 55 }] : [];
   return [...antigo, ev('2023-02-01T00:00', 'Exercício', 'Entrada - Posse - Início de mandato')];
 };
+// Senado (inventado): 81 senadores, exercício desde 01/02/2023 e CEAPS com CPF e fornecedor falsos, que NUNCA podem aparecer nos arquivos.
+const CPF_SENADO_FALSO = '123.456.789-09';
+const listaSenado = () => ({ ListaParlamentarEmExercicio: { Parlamentares: { Parlamentar: Array.from({ length: 81 }, (_, k) => ({ IdentificacaoParlamentar: {
+  CodigoParlamentar: String(5000 + k), NomeParlamentar: `Senador Teste ${k + 1}`, SiglaPartidoParlamentar: 'AAA', UfParlamentar: ['AC', 'SP', 'MG'][k % 3],
+  UrlFotoParlamentar: `http://www.senado.leg.br/senadores/img/fotos-oficiais/senador${5000 + k}.jpg`, UrlPaginaParlamentar: `http://www25.senado.leg.br/web/senadores/senador/-/perfil/${5000 + k}` } })) } } });
+const mandatoSenado = () => ({ MandatoParlamentar: { Parlamentar: { Mandatos: { Mandato: { DescricaoParticipacao: 'Titular', Exercicios: { Exercicio: [{ DataInicio: '2023-02-01' }] } } } } } });
+const ceapsSenado = (ano) => Array.from({ length: 81 }, (_, k) => Array.from({ length: ano === 2026 ? 10 : 12 }, (_, m) => [0, 1, 2].map((n) => ({
+  ano, mes: m + 1, codSenador: 5000 + k, nomeSenador: `Senador Teste ${k + 1}`, tipoDespesa: 'Aluguel', cpfCnpj: CPF_SENADO_FALSO, fornecedor: 'PADARIA DO ZE LTDA', documento: 'D1', valorReembolsado: 1000 + k * 10 + n })))).flat(2);
 const fontes = {
   json: async (url) => {
     let m;
+    if (url.includes('legis.senado.leg.br/dadosabertos/senador/lista/atual')) return listaSenado();
+    if (/legis\.senado\.leg\.br\/dadosabertos\/senador\/\d+\/mandatos$/.test(url)) return mandatoSenado();
+    if ((m = url.match(/despesas_ceaps\/(\d{4})$/))) return ceapsSenado(Number(m[1]));
     if ((m = url.match(/\/deputados\/(\d+)\/historico$/))) return { dados: historicoDe(Number(m[1])) };
     if ((m = url.match(/\/deputados\/(\d+)$/))) return { dados: { id: Number(m[1]), nomeCivil: `NOME CIVIL ${m[1]}`, dataNascimento: '1970-01-01', municipioNascimento: 'Teste', ufNascimento: 'SP', ultimoStatus: { situacao: 'Exercício', condicaoEleitoral: 'Titular', data: '2023-02-01', gabinete: { sala: '300', predio: '4', telefone: '3215-0000', email: 'dep@camara.leg.br' } } } };
     if ((m = url.match(/\/legislaturas\/(\d+)\/mesa/))) return { dados: m[1] === '57' ? [{ id: 100003, titulo: 'Presidente', dataInicio: '2025-02-01', dataFim: null }, { id: 100004, titulo: '1º Vice-Presidente', dataInicio: '2025-02-01', dataFim: null }] : [] };
     if ((m = url.match(/\/votacoes\/(P\d+)$/))) return { dados: { id: m[1], proposicoesAfetadas: [{ id: 777000 + Number(m[1].slice(1)), siglaTipo: 'PL', numero: 100 + Number(m[1].slice(1)), ano: 2026, ementa: 'Ementa da matéria ' + m[1] }] } };
+    if (url.startsWith(API + '/orgaos?')) {
+      const pagina = Number(new URL(url).searchParams.get('pagina') || 1);
+      const todos = [{ id: 180, tipoOrgao: 'Plenário' }, ...COMISSOES.map((id) => ({ id, tipoOrgao: 'Comissão Permanente' })), { id: 3001, tipoOrgao: 'Comissão Especial' }, { id: 3002, tipoOrgao: 'Comissão Parlamentar de Inquérito' }];
+      return { dados: pagina === 1 ? todos : [] };
+    }
     if (url.startsWith(API + '/deputados')) {
       const pagina = Number(new URL(url).searchParams.get('pagina') || 1);
       return { dados: Array.from({ length: N_DEP }, (_, i) => dep(i)).slice((pagina - 1) * 100, pagina * 100) };
     }
+    if (url.includes('api.worldbank.org')) return respostaBancoMundial(url);
     if (url.includes('apidatalake') && url.includes('/dca?')) return respostaDca(url);
     if (url.includes('apidatalake')) return respostaSiconfi(url);
     if (url.includes('servicodados.ibge.gov.br/api/v1/pesquisas/indicadores/')) return respostaCidades(url);
@@ -355,8 +436,12 @@ const fontes = {
     if (url.includes('api.bcb.gov.br')) return respostaBcb(url);
     throw new Error('HTTP 404 em ' + url);
   },
-  texto: async (url) => { if (!(url in arquivosTexto)) throw new Error('HTTP 404 em ' + url); lidos.push(url); return arquivosTexto[url]; },
-  cotas: async (a) => (a === 2026 ? cotas : doAno(cotas, a).replace(/"2025";"1";"999999"/, '"2025";"1";"0"'))
+  texto: async (url) => {
+    if (url.startsWith(PORTAL)) return paginaPortal(url);
+    if (!(url in arquivosTexto)) throw new Error('HTTP 404 em ' + url);
+    lidos.push(url);
+    return arquivosTexto[url];
+  }
 };
 const zipsPorAno = { 2018: zip2018, 2020: zip2020, 2022: zip2022, 2024: zip2024, 2026: zip2026 };
 const baixarZip = async (url) => { const z = zipsPorAno[/consulta_cand_(\d{4})\.zip/.exec(url)[1]]; if (!z) throw new Error('HTTP 404 em ' + url); return z; };
@@ -395,7 +480,7 @@ await caso('federais: 513 deputados, posições 1..N sem buracos, notas de 0 a 1
   assert.equal(f.comNota, com.length);
   assert.deepEqual(com.map((i) => i.rank).sort((a, b) => a - b), com.map((_, k) => k + 1));
   assert.ok(com.every((i) => i.nota >= 0 && i.nota <= 100));
-  assert.ok(com.every((i) => i.comp.length === 4 && i.comp.every((c) => c.s >= 0 && c.s <= 100)));
+  assert.ok(com.every((i) => i.comp.length === 5 && i.comp.every((c) => c.s == null || (c.s >= 0 && c.s <= 100))), 'cinco critérios; o que não tem dado fica nulo (nunca zero)');
 });
 
 await caso('federais: casos especiais (assumiu tarde, primeira presença tardia, nunca apareceu)', () => {
@@ -412,7 +497,22 @@ const ANOS = [2023, 2024, 2025, 2026];
 const dSessao = (s, a) => dataSessao(s).replace('2026', String(a));
 const dVot = (v, a) => dataVot(v).replace('2026', String(a));
 
-await caso('federais: presença, votos e cota nos 4 anos batem com a conta feita à mão', () => {
+const DIA_MS = 86400000;
+const mesesExerc = (desde, pausaDias = 0) => Math.max(1, ((new Date('2026-11-18') - new Date(desde)) / DIA_MS - pausaDias) / 30.44);
+// Conta de comissões feita à mão: reuniões da comissão do deputado, de 4 anos, depois da primeira presença e do início como titular.
+const esperadoComissao = (i, desde, { ini = '2023-03-01', fim = null, pausas = [] } = {}) => {
+  const c = COMISSOES[i % 4]; let esperadas = 0, presentes = 0, licenca = 0;
+  for (const a of ANOS) for (let k = 0; k < REUNIOES; k++) {
+    const data = dataReuniao(k).replace('2026', String(a));
+    if (data < desde || data < ini || (fim && data > fim)) continue;
+    if (compareceuComissao(i, c, k)) { esperadas++; presentes++; }
+    else if (pausas.some(([de, ate]) => data >= de && data < ate)) licenca++;
+    else esperadas++;
+  }
+  return { esperadas, presentes, licenca };
+};
+
+await caso('federais: presença e votos nos 4 anos batem com a conta feita à mão', () => {
   const f = lerSaida('federais.json');
   const i = 40;
   const d = f.itens.find((x) => x.id === String(100000 + i));
@@ -421,17 +521,97 @@ await caso('federais: presença, votos e cota nos 4 anos batem com a conta feita
   assert.equal(d.desde, dSessao(primeira, 2023), 'a contagem começa na primeira presença da janela (2023)');
   const total = 4 * SESSOES - primeira;
   assert.equal(d.extra.sessoes[0], 4 * feitas); assert.equal(d.extra.sessoes[1], total);
-  assert.equal(d.comp[0].s, Math.round(4 * feitas / total * 1000) / 10);
+  assert.equal(d.comp.find((c) => c.k === 'pres').s, Math.round(4 * feitas / total * 1000) / 10);
   const doVoto = (v) => ((i * 13 + v * 7) % 100) < perfil(i).vot;
   const desdeVot = [...Array(VOT_PLEN).keys()].filter((v) => dVot(v, 2023) >= dSessao(primeira, 2023));
   const votei = desdeVot.filter(doVoto).length + 3 * [...Array(VOT_PLEN).keys()].filter(doVoto).length;
   assert.equal(d.extra.votos[0], votei); assert.equal(d.extra.votos[1], desdeVot.length + 3 * VOT_PLEN);
-  assert.equal(d.comp[1].s, Math.round(votei / (desdeVot.length + 3 * VOT_PLEN) * 1000) / 10);
-  assert.equal(d.extra.gasto, 4 * 10 * perfil(i).gasto, 'soma da cota dos 4 anos');
-  assert.match(d.comp[0].f, /desde \d\d\/\d\d\/2023/);
+  assert.equal(d.comp.find((c) => c.k === 'vot').s, Math.round(votei / (desdeVot.length + 3 * VOT_PLEN) * 1000) / 10);
+  assert.match(d.comp.find((c) => c.k === 'pres').f, /desde \d\d\/\d\d\/2023/);
 });
 
-await caso('federais: requerimento não conta como projeto; cota usa valor menos glosa e ignora outro ano', () => {
+await caso('federais: presença em comissões: só titular, só reunião deliberativa de comissão permanente, a partir da posse como titular', () => {
+  const f = lerSaida('federais.json');
+  const d = f.itens.find((x) => x.id === String(100040));
+  const esp = esperadoComissao(40, d.desde);
+  assert.ok(esp.esperadas > 40 && esp.presentes > 0 && esp.presentes < esp.esperadas, 'o teste precisa ter presenças e faltas');
+  assert.equal(d.extra.comissoes.esperadas, esp.esperadas, 'a comissão do deputado (suplência em outra, audiência, reunião cancelada e comissão especial não contam)');
+  assert.equal(d.extra.comissoes.presentes, esp.presentes);
+  assert.equal(d.extra.comissoes.suficiente, true);
+  const c = d.comp.find((x) => x.k === 'comis');
+  assert.equal(c.s, Math.round(esp.presentes / esp.esperadas * 1000) / 10);
+  assert.match(c.f, new RegExp(`Presente em ${esp.presentes} de ${esp.esperadas} reuniões deliberativas de comissões permanentes`));
+  assert.match(c.f, /não publica quem substituiu o titular/);
+  // saiu da comissão em 30/06/2024: reuniões depois disso não contam
+  const d11 = f.itens.find((x) => x.id === String(100011));
+  const e11 = esperadoComissao(11, d11.desde, { fim: '2024-06-30' });
+  assert.equal(d11.extra.comissoes.esperadas, e11.esperadas); assert.equal(d11.extra.comissoes.presentes, e11.presentes);
+});
+
+await caso('federais: comissões: licença não conta contra; pouca reunião ou sem comissão = sem dado, nunca zero', () => {
+  const f = lerSaida('federais.json');
+  const d7 = f.itens.find((x) => x.id === String(100007));
+  const e7 = esperadoComissao(7, d7.desde, { pausas: [['2023-08-01', '2023-12-01']] });
+  assert.ok(e7.licenca > 0, 'o teste precisa ter faltas durante a licença');
+  assert.deepEqual([d7.extra.comissoes.esperadas, d7.extra.comissoes.presentes, d7.extra.comissoes.licenca], [e7.esperadas, e7.presentes, e7.licenca]);
+  const d503 = f.itens.find((x) => x.id === String(100503));
+  assert.equal(d503.extra.comissoes.suficiente, false); assert.ok(d503.extra.comissoes.esperadas < 10);
+  const c503 = d503.comp.find((x) => x.k === 'comis');
+  assert.equal(c503.s, null); assert.match(c503.f, /Dado não encontrado ou não confirmado/); assert.match(c503.f, /poucas reuniões não são nota baixa/);
+  assert.ok(d503.nota != null, 'o índice sai com os outros critérios');
+  const d15 = f.itens.find((x) => x.id === String(100015)); // não é titular de comissão nenhuma
+  assert.equal(d15.extra.comissoes.esperadas, 0);
+  assert.equal(d15.comp.find((x) => x.k === 'comis').s, null);
+});
+
+await caso('federais: custo para os cofres públicos soma cota, verba de gabinete, moradia e viagens dos anos de exercício', () => {
+  const f = lerSaida('federais.json');
+  for (const i of [40, 41, 120]) {
+    const d = f.itens.find((x) => x.id === String(100000 + i));
+    const total = ANOS.reduce((t, a) => t + custoAno(i, a), 0);
+    assert.equal(d.extra.custo.total, Math.round(total), `custo total do deputado ${i}`);
+    const meses = mesesExerc(d.desde);
+    assert.ok(Math.abs(d.extra.custo.porMes - total / meses) <= 1, 'custo por mês de exercício');
+    assert.equal(d.extra.custo.componentes.cota, Math.round(ANOS.reduce((t, a) => t + cotaPortal(i, a), 0)));
+    assert.equal(d.extra.custo.componentes.verba, Math.round(ANOS.reduce((t, a) => t + verbaPortal(i, a), 0)));
+    assert.equal(d.extra.custo.componentes.moradia, Math.round(4 * (moradiaPortal(i) || 0)));
+    assert.equal(d.extra.custo.componentes.viagens, Math.round(ANOS.reduce((t, a) => t + (viagensPortal(i, a) || 0), 0)));
+    assert.deepEqual(Object.keys(d.extra.custo.anos).sort(), ['2023', '2024', '2025', '2026']);
+  }
+  // "Ainda não há dados disponíveis" entra como R$ 0 só na soma e fica registrado por ano
+  const d41 = f.itens.find((x) => x.id === String(100041)); // 41: sem moradia e sem viagens
+  assert.deepEqual(d41.extra.custo.anos[2026].semLancamento.sort(), ['moradia', 'viagens']);
+  assert.equal(d41.extra.custo.componentes.moradia, 0);
+});
+
+await caso('federais: custo é comparado entre todos os deputados do país: menos custo por mês, critério maior', () => {
+  const f = lerSaida('federais.json');
+  const com = f.itens.filter((x) => x.extra && x.extra.custo && x.extra.custo.porMes != null && !x.extra.custo.poucosMeses);
+  assert.ok(com.length > 400);
+  const s = (x) => x.comp.find((c) => c.k === 'custo').s;
+  assert.ok(com.every((x) => s(x) != null && s(x) >= 0 && s(x) <= 100));
+  const maisCaro = com.reduce((a, b) => (b.extra.custo.porMes > a.extra.custo.porMes ? b : a));
+  const maisBarato = com.reduce((a, b) => (b.extra.custo.porMes < a.extra.custo.porMes ? b : a));
+  assert.ok(s(maisBarato) > s(maisCaro) + 90, 'o mais barato fica perto de 100 e o mais caro perto de 0');
+  assert.match(maisCaro.comp.find((c) => c.k === 'custo').f, /R\$/);
+  // comparado entre TODOS: deputados de estados diferentes entram na mesma régua
+  assert.ok(new Set(com.map((x) => x.uf)).size > 20);
+  assert.match(maisCaro.comp.find((c) => c.k === 'custo').f, /deputados/);
+});
+
+await caso('federais: página do Portal que falha não vira custo zero: o deputado fica sem o critério', () => {
+  const f = lerSaida('federais.json');
+  const d = f.itens.find((x) => x.id === String(100010));
+  assert.equal(d.extra.custo, null);
+  assert.match(d.extra.custoMotivo, /2024/);
+  const c = d.comp.find((x) => x.k === 'custo');
+  assert.equal(c.s, null); assert.match(c.f, /Dado não encontrado ou não confirmado/); assert.match(c.f, /não significa custo zero/);
+  assert.ok(d.nota != null);
+  const m = JSON.parse(readFileSync(path.join(saida, 'meta.json'), 'utf-8'));
+  assert.ok(m.fontes.custo.falhas > 0 && m.fontes.custo.deputadosCompletos < 513, 'a falha aparece no resumo da rotina');
+});
+
+await caso('federais: requerimento não conta como projeto', () => {
   const f = lerSaida('federais.json');
   const c = COAUTOR - 100000;
   const dc = f.itens.find((x) => x.id === String(COAUTOR));
@@ -443,15 +623,16 @@ await caso('federais: requerimento não conta como projeto; cota usa valor menos
     esperado += dataDoPLcoautoria(a) >= dc.desde ? 1 : 0;
   }
   assert.equal(dc.extra.projetos, esperado, 'conta os projetos próprios (a partir da primeira presença) mais o PL em coautoria, uma vez só por ano');
-  assert.equal(dc.extra.gasto, 4 * 10 * perfil(c).gasto, 'o gasto lançado em outro ano não entra');
 });
 
-await caso('federais: pesos pedidos (cota 30, votações 20, presença 20, projetos aprovados 30) somam 100', () => {
+await caso('federais: pesos da v8 (projetos aprovados 30, votações 15, presença no Plenário 20, comissões 10, custo 25) somam 100', () => {
   const m = lerSaida('metodo.json');
-  assert.deepEqual(m.federais.componentes.map((c) => [c.k, c.peso]), [['cota', 30], ['vot', 20], ['pres', 20], ['aprov', 30]]);
+  const pesos = Object.fromEntries(m.federais.componentes.map((c) => [c.k, c.peso]));
+  assert.deepEqual(pesos, { aprov: 30, vot: 15, pres: 20, comis: 10, custo: 25 });
   assert.equal(m.federais.componentes.reduce((a, c) => a + c.peso, 0), 100);
-  assert.ok(!m.federais.componentes.some((c) => c.k === 'proj'), 'projetos apresentados saiu da nota');
-  assert.equal(m.federais.minMesesAprovados, 12);
+  assert.ok(!m.federais.componentes.some((c) => c.k === 'proj' || c.k === 'cota'), 'projetos apresentados e uso da cota saíram da nota');
+  assert.equal(m.federais.minMesesAprovados, 12); assert.equal(m.federais.minReunioesComissao, 10); assert.equal(m.federais.minCriterios, 3);
+  assert.ok(m.federais.componentes.find((c) => c.k === 'custo').regra.includes('subsídio'), 'a regra diz o que fica de fora');
 });
 
 await caso('situação do projeto: lei, aprovado pela Casa, comissão, arquivado, nova proposição e tramitação', () => {
@@ -500,7 +681,7 @@ await caso('federais: projetos aprovados contados por situação, autoria e por 
   const c = d.comp.find((x) => x.k === 'aprov');
   assert.ok(c && c.s >= 0 && c.s <= 100);
   assert.match(c.f, /aprovados? pelo Plenário da Câmara/); assert.match(c.f, /por ano de exercício/);
-  assert.deepEqual(d.comp.map((x) => x.k).sort(), ['aprov', 'cota', 'pres', 'vot']); // a ordem da tela segue a Metodologia, não o arquivo
+  assert.deepEqual(d.comp.map((x) => x.k).sort(), ['aprov', 'comis', 'custo', 'pres', 'vot']); // a ordem da tela segue a Metodologia, não o arquivo
 });
 
 await caso('federais: quem tem mais projetos aprovados por ano fica com critério maior; coautoria é identificada', () => {
@@ -521,7 +702,7 @@ await caso('federais: mandato recente (menos de 12 meses) fica sem o critério, 
   const c = novo.comp.find((x) => x.k === 'aprov');
   assert.equal(c.s, null);
   assert.match(c.f, /Histórico insuficiente/); assert.match(c.f, /não é desempenho negativo/);
-  assert.ok(novo.nota != null, 'a nota é calculada com presença, votações e cota');
+  assert.ok(novo.nota != null, 'a nota é calculada com os outros critérios');
 });
 
 await caso('federais: arquivo sem a situação dos projetos deixa o critério sem dado (não vira zero)', async () => {
@@ -547,12 +728,12 @@ await caso('federais: a situação dos projetos dos anos fechados é relida a ca
   assert.ok(guardados[2024].statusEm && guardados[2024].statusOk === true);
   let n = lidos.length;
   await gerarFederais(base);
-  assert.equal(lidos.slice(n).filter((u) => !u.includes('-2026.csv')).length, 0, 'com a leitura recente, não relê nada dos anos fechados');
+  assert.equal(lidos.slice(n).filter((u) => !u.includes('-2026.csv') && !u.includes('orgaosDeputados')).length, 0, 'com a leitura recente, não relê nada dos anos fechados');
   n = lidos.length;
   await gerarFederais({ ...base, hoje: new Date('2026-11-27T12:00:00Z') });
-  const relidos = lidos.slice(n).filter((u) => !u.includes('-2026.csv'));
+  const relidos = lidos.slice(n).filter((u) => !u.includes('-2026.csv') && !u.includes('orgaosDeputados'));
   assert.equal(relidos.length, 6, 'só proposições e autores dos 3 anos fechados');
-  assert.ok(relidos.every((u) => /proposicoes(Autores)?\/csv/.test(u)), 'não refaz presença, votos nem cota: ' + relidos.join(', '));
+  assert.ok(relidos.every((u) => /proposicoes(Autores)?\/csv/.test(u)), 'não refaz presença, votos nem comissões: ' + relidos.join(', '));
   assert.equal(guardados[2024].statusEm.slice(0, 10), '2026-11-27');
 });
 
@@ -572,86 +753,30 @@ await caso('federais: licença e afastamento não contam contra o deputado (hist
   assert.ok(!outro.extra.licenca, 'quem não se licenciou não tem a marca de licença');
 });
 
-await caso('TSE: só eleitos; 2º turno conta uma vez; DF sem municipais; estaduais e distritais', () => {
-  const pr = lerSaida('prefeitos-SP.json');
-  assert.equal(pr.itens.length, 5);
-  assert.equal(pr.itens.filter((p) => p.nome === 'Prefeito Sp3').length, 1);
-  assert.ok(pr.itens.every((p) => p.cod && p.municipio && p.partido));
-  assert.ok(!existsSync(path.join(saida, 'prefeitos-DF.json')));
-  // Vereadores foram retirados do aplicativo: os dados de teste têm vereadores, mas nenhum arquivo deve ser gerado,
-  // e a sobra de uma versão antiga é apagada.
-  assert.ok(!existsSync(path.join(saida, 'vereadores-MG.json')), 'não deve existir arquivo de vereadores');
+await caso('v8: o Placar acompanha deputados federais, senadores, governadores e presidente; prefeitos, estaduais e vereadores saíram', () => {
+  for (const f of readdirSync(saida)) assert.ok(!/^(prefeitos|estaduais|vereadores)-/.test(f), 'sobra de versão anterior: ' + f);
+  for (const f of ['ranking-prefeitos.json', 'estaduais-registro.json', 'assembleias.json']) assert.ok(!existsSync(path.join(saida, f)), f);
+  assert.ok(!readdirSync(path.join(saida, 'executivos')).some((n) => /^\d{7}\.json$/.test(n)), 'perfis de municípios não são gerados');
+  assert.ok(!readdirSync(path.join(saida, 'anos')).some((n) => /^estaduais-/.test(n)));
   assert.ok(!('vereadores' in meta1.cargos), 'meta não deve ter vereadores');
-  assert.equal(lerSaida('estaduais-DF.json').itens.length, 8);
-  const g = lerSaida('governadores.json');
-  assert.equal(g.total, 27);
-  assert.equal(pr.itens[0].idade, 53);
+  assert.deepEqual(Object.keys(meta1.cargos).sort(), ['federais', 'governadores', 'senadores']);
+  assert.ok(!('estaduais' in meta1.fontes));
+  assert.deepEqual(Object.keys(lerSaida('destaques.json')).sort(), ['federais', 'governadores', 'senadores']);
+  assert.equal(lerSaida('governadores.json').total, 27);
 });
 
-await caso('TSE: acento e nome próprio', () => {
-  const pr = lerSaida('prefeitos-RJ.json');
-  const nomes = pr.itens.map((p) => p.municipio);
-  assert.ok(nomes.includes('São Luís do Teste'), nomes.join(' | '));
-  assert.ok(nomes.includes('Biritiba-Mirim'));
+await caso('TSE (código arquivado de prefeitos): só eleitos, 2º turno conta uma vez, acento e nome próprio', () => {
+  const r = lerEleitos(csvMunicipal('SP'), new Date('2026-11-18'));
+  assert.equal(r.prefeitos.length, 5);
+  assert.equal(r.prefeitos.filter((p) => p.nome === 'Prefeito Sp3').length, 1);
+  assert.ok(r.prefeitos.every((p) => p.cod && p.municipio && p.partido));
+  assert.ok(r.prefeitos.some((p) => p.municipio === 'São Luís do Teste') && r.prefeitos.some((p) => p.municipio === 'Biritiba-Mirim'));
+  assert.equal(r.prefeitos[0].idade, 53);
 });
 
-await caso('Tesouro: ligação município-ente (acento, apóstrofo, hífen); as contas ficam como informação e não entram na nota', () => {
-  const pr = lerSaida('prefeitos-SP.json');
-  const mirim = pr.itens.find((p) => /Biritiba/.test(p.municipio));
-  assert.ok(mirim.ibge, 'achou o ente do Tesouro');
-  const id = mirim.ibge;
-  if (!situacao(id).semDados) {
-    // gasto com pessoal, dívida e relatórios entregues continuam disponíveis, só como informação (aba Orçamento e Prestação de contas)
-    const esp = situacao(id).semestral ? 9 : 10;
-    assert.equal(mirim.contas.entregas.esperado, esp);
-    assert.equal(mirim.contas.entregas.feitas, esp - (id % 11 === 0 ? 1 : 0));
-    assert.equal(mirim.contas.pessoal, pessoalDe(id)); assert.equal(mirim.contas.limitePessoal, 54);
-    assert.equal(mirim.contas.divida, dividaDe(id)); assert.equal(mirim.contas.limiteDivida, 120);
-  }
-  assert.ok(!mirim.comp.some((c) => c.k === 'pessoal' || c.k === 'divida'), 'gasto com pessoal e dívida saíram da nota');
-  // Biritiba-Mirim tem troca de prefeito em abril de 2026: os resultados disponíveis (até 2025) são anteriores à posse do atual
-  assert.equal(mirim.nota, null); assert.equal(mirim.bloqueio, 'mandato-novo');
-  assert.match(mirim.motivo, /mandato atual começou em 2026/);
-});
 
-await caso('Índice de serviços públicos: prefeituras têm 5 áreas, segurança não se aplica, infraestrutura sem fonte, nota parcial com ressalva', () => {
-  const todos = [];
-  for (const uf of UFS) if (existsSync(path.join(saida, `prefeitos-${uf}.json`))) todos.push(...lerSaida(`prefeitos-${uf}.json`).itens);
-  const comNota = todos.filter((p) => p.nota != null);
-  assert.ok(comNota.length > 100, 'quase todas as prefeituras do teste têm índice: ' + comNota.length);
-  for (const p of comNota) {
-    assert.deepEqual(p.comp.map((c) => c.k), ['saude', 'educacao', 'seguranca', 'infra', 'saneamento'], p.municipio);
-    assert.equal(p.comp.find((c) => c.k === 'seguranca').na, true);
-    assert.equal(p.comp.find((c) => c.k === 'infra').sem, 'fonte');
-    assert.ok(p.comp.every((c) => c.peso === 20));
-    assert.ok(p.parcial.usadas >= 2 && p.parcial.usadas <= 3 && p.parcial.total === 5 && p.parcial.aplicaveis === 4, JSON.stringify(p.parcial));
-    assert.ok(p.nota >= 0 && p.nota <= 100);
-    if (p.comp.find((c) => c.k === 'saneamento').s != null) assert.match(p.ressalva, /Saneamento é um retrato do Censo 2022/);
-    assert.match(p.ressalva, /2022|gestão atual/);
-    const usadas = p.comp.filter((c) => c.s != null);
-    const media = usadas.reduce((t, c) => t + c.s, 0) / usadas.length;
-    assert.ok(Math.abs(p.nota - media) < 0.06, `nota = média das áreas com dado (iguais, 20% cada): ${p.nota} x ${media}`);
-  }
-  const semNota = todos.filter((p) => p.nota == null);
-  assert.ok(semNota.every((p) => p.motivo && p.rank === null), 'quem não tem índice mostra o motivo, nunca zero');
-  assert.ok(semNota.some((p) => p.bloqueio === 'mandato-novo'), 'quem tomou posse depois dos resultados disponíveis fica sem índice');
-});
 
-await caso('Tesouro: cidade pequena com relatório semestral; RGF da Câmara de Vereadores não conta; as contas não decidem a nota', () => {
-  const todos = [];
-  for (const uf of UFS) if (existsSync(path.join(saida, `prefeitos-${uf}.json`))) todos.push(...lerSaida(`prefeitos-${uf}.json`).itens);
-  const semestral = todos.find((p) => p.ibge && situacao(p.ibge).semestral && p.contas && p.contas.entregas);
-  assert.ok(semestral, 'existe município semestral no teste');
-  assert.equal(semestral.contas.entregas.esperado, 9, 'cidade semestral deve 2 RGF, não 3; a Câmara de Vereadores não conta');
-  assert.equal(semestral.contas.rgf, 'S2');
-  const vazio = todos.find((p) => p.ibge && situacao(p.ibge).semDados);
-  assert.ok(vazio && vazio.contas.pessoal === null && vazio.contas.divida === null, 'sem relatórios fiscais: as contas aparecem como "não confirmado" (nunca zero)');
-  assert.ok(vazio.nota != null, 'a falta de relatório fiscal não impede o índice de serviços públicos');
-  assert.ok(todos.every((p) => p.nota == null || (p.nota >= 0 && p.nota <= 100)));
-  const rk = lerSaida('ranking-prefeitos.json');
-  assert.equal(rk.total, 130);
-  assert.deepEqual(rk.itens.filter((i) => i.nota != null).map((i) => i.rank).sort((a, b) => a - b), rk.itens.filter((i) => i.nota != null).map((_, k) => k + 1));
-});
+
 
 await caso('governadores: estados achados pelo código do IBGE (no Tesouro o "uf" deles é BR); DF usa esfera D; índice de 5 áreas', () => {
   const g = lerSaida('governadores.json');
@@ -670,27 +795,7 @@ await caso('governadores: estados achados pelo código do IBGE (no Tesouro o "uf
   assert.deepEqual(df.parcial.faltam.map((x) => [x.k, x.motivo]), [['seguranca', 'sem-dado'], ['infra', 'sem-fonte']]);
 });
 
-await caso('Tesouro: cidade pequena entrega o RGF Simplificado e as contas continuam disponíveis como informação', () => {
-  const todos = [];
-  for (const uf of UFS) if (existsSync(path.join(saida, `prefeitos-${uf}.json`))) todos.push(...lerSaida(`prefeitos-${uf}.json`).itens);
-  const pequenas = todos.filter((p) => p.ibge && situacao(p.ibge).semestral && !situacao(p.ibge).semDados);
-  assert.ok(pequenas.length > 5, 'há várias cidades semestrais no teste');
-  assert.ok(pequenas.every((p) => p.comp.length === 5 || p.bloqueio), 'índice de 5 áreas (ou bloqueada por troca de gestor)');
-  const p = pequenas[0];
-  assert.equal(p.contas.pessoal, pessoalDe(p.ibge));
-});
 
-await caso('Tesouro: nomes escritos diferente são ligados por semelhança; falhas passageiras são repassadas', () => {
-  assert.equal(meta1.fontes.siconfi.pelaSemelhanca, 2);
-  const rn = lerSaida('prefeitos-RN.json').itens.find((p) => p.cod === '01000');
-  const pb = lerSaida('prefeitos-PB.json').itens.find((p) => p.cod === '01004');
-  assert.equal(rn.ibge, codPorMun['RN0']); assert.equal(pb.ibge, codPorMun['PB4']);
-  assert.equal(meta1.fontes.siconfi.comErro, 0, 'depois da segunda tentativa, nenhuma consulta ficou com erro');
-  assert.ok(jaFalhou.size > 5, 'o teste simulou falhas passageiras');
-  const todos = [];
-  for (const uf of UFS) if (existsSync(path.join(saida, `prefeitos-${uf}.json`))) todos.push(...lerSaida(`prefeitos-${uf}.json`).itens);
-  assert.ok(!todos.some((p) => /Não foi possível consultar/.test(p.motivo || '')));
-});
 
 await caso('ligação por nome parecido: não arrisca em empate, em nomes muito diferentes ou em prefeitura já ligada', () => {
   const idx = indexarEntes([
@@ -711,14 +816,14 @@ await caso('ligação por nome parecido: não arrisca em empate, em nomes muito 
 
 await caso('destaques: maiores e menores de cada cargo', () => {
   const d = lerSaida('destaques.json');
-  for (const c of ['federais', 'prefeitos', 'governadores']) {
+  for (const c of ['federais', 'governadores']) {
     assert.ok(d[c].top.length > 0 && d[c].bottom.length > 0, c);
     assert.ok(d[c].top[0].nota >= d[c].bottom[0].nota);
     assert.ok(d[c].top.every((x, k, a) => k === 0 || a[k - 1].nota >= x.nota));
     assert.ok(d[c].bottom.every((x, k, a) => k === 0 || a[k - 1].nota <= x.nota));
   }
   assert.equal(d.federais.top[0].rank, 1);
-  const m = lerSaida('metodo.json'); assert.equal(m.federais.componentes.length, 4);
+  const m = lerSaida('metodo.json'); assert.equal(m.federais.componentes.length, 5);
 });
 
 await caso('Como votou?: votos.json com a lista de votações e uma linha de votos por deputado', () => {
@@ -802,13 +907,46 @@ const exec = (cod) => lerSaida(`executivos/${cod}.json`);
 const escolherMun = (k) => { for (const uf of UFS.filter((u) => u !== 'DF')) { const id = codPorMun[`${uf}${k}`]; if (id % 11 !== 0) return { uf, id }; } };
 
 await caso('perfil ampliado: as novas etapas terminam bem e gravam os arquivos', () => {
-  for (const f of ['administracoes', 'ibge', 'presidente', 'series', 'cidades', 'indice']) assert.equal(meta1.fontes[f].ok, true, f);
-  assert.equal(meta1.fontes.administracoes.municipios, 130);
+  for (const f of ['administracoes', 'ibge', 'presidente', 'mundo', 'series', 'cidades', 'indice']) assert.equal(meta1.fontes[f].ok, true, f);
+  assert.equal(meta1.fontes.administracoes.municipios, 0, 'prefeituras saíram do Placar');
   assert.equal(meta1.fontes.administracoes.governadores, 27);
   assert.equal(meta1.fontes.administracoes.presidente, true);
-  for (const f of ['administracoes-SP.json', 'administracoes-BR.json', 'indicadores.json', 'ibge-contexto.json', 'executivos/presidente.json', 'executivos/35.json']) assert.ok(existsSync(path.join(saida, f)), f);
+  for (const f of ['administracoes-SP.json', 'administracoes-BR.json', 'indicadores.json', 'ibge-contexto.json', 'mundo.json', 'executivos/presidente.json', 'executivos/35.json']) assert.ok(existsSync(path.join(saida, f)), f);
   for (const a of [2022, 2023, 2024, 2025]) assert.ok(existsSync(path.join(saida, 'anos', `siconfi-${a}.json`)), `cache do Tesouro de ${a}`);
   assert.ok(!existsSync(path.join(saida, 'anos', 'siconfi-2026.json')), 'o ano em curso não é coletado');
+});
+
+await caso('senadores: lista com foto e custo (CEAPS) entram na rotina diária; só 1 critério confirmado, então ainda não há índice', () => {
+  assert.equal(meta1.fontes.senado.ok, true);
+  assert.equal(meta1.fontes.senado.total, 81);
+  assert.equal(meta1.fontes.senado.comCusto, 81);
+  assert.deepEqual(meta1.fontes.senado.anosLidos, [2023, 2024, 2025, 2026]);
+  assert.deepEqual(meta1.cargos.senadores, { total: 81, comNota: 0, media: null, comCusto: 81 });
+  const sen = lerSaida('senadores.json');
+  assert.equal(sen.total, 81);
+  assert.ok(!('diagnostico' in sen), 'o diagnóstico vai para meta.json, não para a lista');
+  assert.ok(sen.itens.every((i) => i.foto.startsWith('https://www.senado.leg.br/') && i.nota == null && i.extra.custo.total > 0));
+  assert.deepEqual(lerSaida('destaques.json').senadores, { top: [], bottom: [] });
+  for (const a of [2023, 2024, 2025, 2026]) assert.ok(existsSync(path.join(saida, 'anos', `senado-ceaps-${a}.json`)), `cache da CEAPS de ${a}`);
+  assert.equal(lerSaida('anos/senado-ceaps-2026.json').parcial, true);
+  assert.ok(existsSync(path.join(saida, 'senado-sondagem.json')));
+  assert.ok(lerSaida('metodo.json').custoNaoMedidosSenadores.some((x) => /auxílio-moradia/.test(x)));
+});
+await caso('senadores: nenhum CPF nem nome de fornecedor em nenhum arquivo gerado', () => {
+  const varrer = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? varrer(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  const arquivos = varrer(saida);
+  assert.ok(arquivos.length > 40);
+  for (const f of arquivos) { const t = readFileSync(f, 'utf-8'); assert.ok(!t.includes('123.456.789-09') && !t.includes('PADARIA DO ZE'), f); }
+});
+
+await caso('fontes independentes: vigilância e valores conferidos entram na rotina diária e não derrubam nada', () => {
+  assert.equal(meta1.fontes.independentes.ok, true);
+  // O relógio do teste (18/11/2026) é anterior à data de conferência dos valores (26/11/2026): a guarda contra data futura os segura.
+  assert.equal(meta1.fontes.independentes.indicadores + meta1.fontes.independentes.descartados, 3);
+  for (const f of ['independentes.json', 'vigilancia.json']) assert.ok(existsSync(path.join(saida, f)), f);
+  const v = lerSaida('vigilancia.json');
+  assert.ok(Object.keys(v.fontes).length >= 10 && /só avisa/.test(v.regra));
+  assert.ok(Object.values(v.fontes).every((x) => ['falhou', 'primeira-leitura'].includes(x.status)), 'primeira rodada: nunca há "novidade"');
 });
 
 await caso('CPF dos arquivos do TSE não aparece em nenhum arquivo publicado', () => {
@@ -819,42 +957,33 @@ await caso('CPF dos arquivos do TSE não aparece em nenhum arquivo publicado', (
   assert.deepEqual(achou, []);
 });
 
-await caso('prefeito: troca de gestor em 2024/2025 separa os anos por gestão', () => {
-  const { id } = escolherMun(1);
-  const d = exec(id);
-  assert.deepEqual(d.gestoes.map((g) => g.nome), ['Prefeito Antigo Sp1', 'Prefeito Sp1'].map((n, i) => (d.gestoes[i].nome.startsWith('Prefeito Antigo') ? 'Prefeito Antigo ' + d.gestoes[i].nome.slice(-3) : 'Prefeito ' + d.gestoes[i].nome.slice(-3))));
-  assert.deepEqual(d.gestoes.map((g) => [g.inicio, g.fim, g.situacao]), [['2021-01-01', '2024-12-31', 'encerrada'], ['2025-01-01', '2028-12-31', 'em exercício']]);
-  assert.deepEqual(Object.keys(d.anos), ['2022', '2023', '2024', '2025', '2026']);
-  for (const a of [2022, 2023, 2024]) assert.deepEqual([d.anos[a].atribuicao.tipo, d.anos[a].atribuicao.gestoes[0]], ['unica', 'g1'], String(a));
-  assert.deepEqual([d.anos[2025].atribuicao.tipo, d.anos[2025].atribuicao.gestoes[0]], ['unica', 'g2']);
-  assert.equal(d.anos[2022].mesesNaJanela, 2, 'de 2022 só novembro e dezembro estão no recorte de 48 meses');
-  assert.equal(d.anos[2023].mesesNaJanela, 12);
-  assert.equal(d.anos[2026].mesesNaJanela, 10);
-  assert.equal(d.anos[2026].situacao, 'em-curso');
-  assert.equal(d.janela.de, '2022-11-01');
-  assert.match(d.aviso, /Trocas que não estejam/);
+await caso('fotos: governador e presidente com o endereço da foto oficial do TSE; deputado com a foto da Câmara', () => {
+  const g = lerSaida('governadores.json');
+  for (const x of g.itens) assert.match(x.foto, new RegExp(`^https://divulgacandcontas\\.tse\\.jus\\.br/divulga/rest/arquivo/img/2040602022/${x.id}/${x.uf}$`), x.uf);
+  assert.ok(lerSaida('federais.json').itens.every((x) => /^https:\/\/exemplo\//.test(x.foto)));
+  const p = exec('presidente');
+  assert.match(p.gestoes.find((x) => x.situacao === 'em exercício').foto, /\/2040602022\/\d+\/BR$/);
+  assert.match(p.gestoes.find((x) => x.situacao === 'futura').foto, /\/20322002026\/\d+\/BR$/);
+  const sp = exec(35);
+  assert.match(sp.gestoes.find((x) => x.nome === 'Governador Sp').foto, /\/2040602022\/\d+\/SP$/);
+  assert.ok(!sp.gestoes.find((x) => x.nome === 'Vice Sp').foto, 'a gestão do vice (curadoria) não leva a foto do titular');
 });
 
-await caso('prefeito reeleito é uma gestão só (não é troca de gestor)', () => {
-  const { id } = escolherMun(0);
-  const d = exec(id);
-  assert.equal(d.gestoes.length, 1);
-  assert.deepEqual([d.gestoes[0].reeleito, d.gestoes[0].mandatos.length], [true, 2]);
-  assert.ok([2022, 2023, 2024, 2025].every((a) => d.anos[a].atribuicao.gestoes[0] === 'g1'));
+await caso('Brasil no mundo: posição entre os países (sem agrupamentos), mesmo critério em cada indicador, com fonte e link', () => {
+  const m = lerSaida('mundo.json');
+  assert.match(m.fonte.nome, /Banco Mundial/); assert.match(m.regra, /1 = melhor/);
+  const por = (id) => m.indicadores.find((i) => i.id === id);
+  assert.deepEqual([por('SP.DYN.LE00.IN').posicao, por('SP.DYN.LE00.IN').de], [150, 200], 'quanto maior, melhor: 149 países à frente; o agrupamento do Banco Mundial não conta');
+  assert.deepEqual([por('SP.DYN.IMRT.IN').posicao, por('SP.DYN.IMRT.IN').de], [50, 200], 'quanto menor, melhor: 49 países à frente');
+  assert.equal(por('SP.DYN.LE00.IN').brasil.valor, 50); assert.equal(por('SP.DYN.LE00.IN').brasil.ano, 2022);
+  assert.ok(m.indicadores.every((i) => i.url.startsWith('https://data.worldbank.org/indicator/') && i.nome && i.unidade && ['saude', 'educacao', 'seguranca', 'economia', 'transparencia'].includes(i.tema)));
 });
 
-await caso('prefeito com troca no meio de 2026 (curadoria): 2026 fica dividido e o titular do TSE continua listado', () => {
-  const id = codPorMun.SP2;
-  if (id % 11 === 0) return;
-  const d = exec(id);
-  assert.equal(d.gestoes.length, 3);
-  assert.deepEqual([d.gestoes[1].fim, d.gestoes[1].encerradaPor, d.gestoes[2].inicio, d.gestoes[2].origem], ['2026-04-01', 'renúncia', '2026-04-02', 'curadoria']);
-  assert.equal(d.anos[2026].atribuicao.tipo, 'dividida');
-  assert.equal(d.anos[2025].atribuicao.tipo, 'unica');
-});
 
-await caso('despesa por função: valores do Tesouro, só nível de função, empenhada ≠ paga, e calculados conferem', () => {
-  const { id } = escolherMun(1);
+
+
+await caso('despesa por função: valores do Tesouro, (estado), só nível de função, empenhada ≠ paga, e calculados conferem', () => {
+  const id = 35;
   const a = exec(id).anos[2024];
   const base = baseDca(id, 2024);
   assert.equal(a.situacao, 'fechado');
@@ -870,17 +999,13 @@ await caso('despesa por função: valores do Tesouro, só nível de função, em
 });
 
 await caso('ente sem balanço no Tesouro: "sem balanço", sem número inventado (nunca zero)', () => {
-  const sem = [...entes.filter((e) => e.esfera === 'M' && e.cod_ibge % 11 === 0 && e.cod_ibge < 9000000)][0];
-  const uf = sem.uf;
-  const prefs = lerSaida(`prefeitos-${uf}.json`).itens.find((p) => p.ibge === sem.cod_ibge);
-  assert.ok(prefs, 'município de teste achado');
-  const a = exec(sem.cod_ibge).anos[2024];
+  const a = exec(11).anos[2024]; // Rondônia (código 11): o Tesouro do teste não tem o balanço
   assert.equal(a.situacao, 'sem-balanco');
   assert.ok(!('f' in a) && !('total' in a) && !('d' in a));
 });
 
 await caso('IBGE: população, PIB e Censo 2022 entram no contexto; valor "-" do IBGE fica de fora', () => {
-  const { id } = escolherMun(1);
+  const id = 35;
   const c = exec(id).contexto;
   const e = entes.find((x) => x.cod_ibge === id);
   assert.deepEqual(c.populacao, { ano: 2025, valor: e.populacao + 2025 });
@@ -890,48 +1015,32 @@ await caso('IBGE: população, PIB e Censo 2022 entram no contexto; valor "-" do
   assert.equal(c.censo.ano, 2022);
   assert.equal(c.censo.referencia, '2022-08-01');
   assert.equal(c.censo.agua, 50 + (id % 40) + 0.5);
-  const semIbge = entes.find((x) => x.esfera === 'M' && x.cod_ibge % 97 === 0 && x.cod_ibge < 9000000 && x.cod_ibge % 11 !== 0);
-  if (semIbge && existsSync(path.join(saida, `executivos/${semIbge.cod_ibge}.json`))) assert.ok(!('populacao' in exec(semIbge.cod_ibge).contexto));
 });
 
-await caso('IBGE Cidades: resultados entram no perfil ligados à gestão do ano; "-", valor impossível e rede inexistente não viram número', () => {
-  const { id } = escolherMun(1);
-  const d = exec(id);
-  const r = d.resultados;
+await caso('IBGE Cidades (estados): resultados entram no perfil ligados à gestão do ano; "-" e rede inexistente não viram número', () => {
+  const r = exec(35).resultados;
   assert.ok(r && r.coletadoEm, 'perfil com resultados');
-  const n6 = Number(String(id).slice(0, 6));
-  if (n6 % 13 === 0) assert.ok(!('ideb.ai.municipal' in r.series), 'só "-" do IBGE: sem série, nunca zero');
-  else assert.deepEqual(Object.keys(r.series['ideb.ai.municipal']), ['2019', '2021', '2023', '2025']);
-  assert.ok(!('ideb.ai.federal' in r.series) && !Object.keys(r.series).some((k) => k.endsWith('.federal') || k.endsWith('.privada')), 'redes que não coletamos não entram');
-  // linha de base: 2019 e 2021 ficam fora do recorte (nov/2022 a out/2026); 2015 é velho demais e fica de fora
-  assert.ok(!('2015' in r.series['ideb.ai.publica']), 'só até 4 anos antes do recorte');
-  assert.equal(r.anos['2019'].noRecorte, false);
-  assert.equal(r.anos['2019'].atribuicao, null, 'linha de base não é atribuída a gestão');
+  assert.ok(r.series['ideb.em.estadual'], 'estado tem Ideb da rede estadual');
+  assert.ok(!('saude.diarreia' in r.series), 'o IBGE não traz diarreia por estado');
+  assert.ok(!Object.keys(r.series).some((k) => k.endsWith('.federal') || k.endsWith('.privada')), 'redes que não coletamos não entram');
+  assert.equal(r.anos['2019'].noRecorte, false); assert.equal(r.anos['2019'].atribuicao, null, 'linha de base não é atribuída a gestão');
   assert.equal(r.anos['2023'].noRecorte, true);
-  assert.equal(r.anos['2023'].atribuicao.tipo, 'unica');
-  assert.equal(r.anos['2023'].atribuicao.gestoes[0], 'g1');
-  assert.equal(r.anos['2023'].mesesNaJanela, 12);
-  assert.equal(r.series['saude.mortalidade']['2023'], 9.9);
-  assert.ok(r.series['saude.diarreia'], 'município tem internações por diarreia');
-  assert.ok(!('saude.diarreia' in exec(35).resultados.series), 'o IBGE não traz diarreia por estado');
-  assert.ok(exec(35).resultados.series['ideb.em.estadual'], 'estado tem Ideb da rede estadual');
 });
 
-await caso('IBGE Cidades: em todos os municípios, "-" some e o valor impossível (5000 por mil) é descartado, sem virar zero', () => {
-  let comTraco = 0, comImpossivel = 0, total = 0;
-  for (const e of readdirSync(path.join(saida, 'executivos'))) {
-    if (!/^\d{7}\.json$/.test(e)) continue;
-    const d = JSON.parse(readFileSync(path.join(saida, 'executivos', e), 'utf-8'));
+await caso('IBGE Cidades (estados): "-" some e o valor impossível é descartado, sem virar zero', () => {
+  let total = 0;
+  for (const uf of UFS) {
+    const d = exec(CODIGO_IBGE_DO_ESTADO[uf]);
     if (!d.resultados) continue;
     total++;
-    const n6 = Number(e.slice(0, 6));
-    const s = d.resultados.series;
-    if (n6 % 13 === 0) { comTraco++; assert.ok(!('ideb.ai.municipal' in s), e); }
-    if (n6 % 17 === 0) { comImpossivel++; assert.deepEqual(Object.keys(s['saude.mortalidade']), ['2021', '2022'], e); }
-    for (const serie of Object.values(s)) for (const v of Object.values(serie)) assert.ok(Number.isFinite(v) && v !== 0, `${e}: valor inválido ${v}`);
+    for (const [k, serie] of Object.entries(d.resultados.series)) for (const v of Object.values(serie)) assert.ok(Number.isFinite(v) && v !== 0, `${uf} ${k}: valor inválido ${v}`);
   }
-  assert.ok(total >= 100, 'perfis com resultados: ' + total);
-  assert.ok(comTraco > 0 && comImpossivel > 0, 'o teste cobre os dois casos');
+  assert.ok(total >= 20, 'estados com resultados: ' + total);
+  for (const uf of ['AM', 'PE']) { // código 13 e 26: a rede municipal do Ideb dos anos iniciais só tem "-" no teste
+    const d = exec(CODIGO_IBGE_DO_ESTADO[uf]);
+    assert.ok(!d.resultados || !('ideb.ai.municipal' in d.resultados.series), uf);
+  }
+  assert.ok('ideb.ai.municipal' in exec(35).resultados.series, 'em outro estado a mesma série existe: o teste não é vazio');
 });
 
 await caso('IBGE Cidades: consultas em lotes de localidades, só 6 dígitos para município e 2 para estado, sem repetir indicador', () => {
@@ -1040,12 +1149,13 @@ await caso('2ª rodada no dia seguinte: atualiza só a Câmara e mantém o resto
   assert.ok(chamadasSiconfi.rgf - antesRgf <= errosAntes * 4, 'só as prefeituras que deram erro na véspera foram consultadas de novo no Tesouro');
   assert.equal(metaB.fontes.tse.atualizadoEm, meta1.fontes.tse.atualizadoEm);
   assert.notEqual(metaB.fontes.camara.atualizadoEm, meta1.fontes.camara.atualizadoEm);
-  assert.ok(metaB.cargos.prefeitos.comNota > 0, 'mantém as notas de prefeitos');
+  assert.ok(metaB.cargos.governadores.comNota > 0, 'mantém as notas de governadores');
 });
 
 await caso('2ª rodada: anos de contas já completos não são buscados de novo no Tesouro', () => {
   for (const a of [2022, 2023, 2024]) assert.equal(chamadasDca.porAno[a], dcaAntes[a], `${a}: nenhuma consulta nova de balanço anual`);
-  assert.equal(chamadasDca.porAno[2025] - dcaAntes[2025], errosAntes, '2025: só as consultas que haviam falhado são refeitas');
+  const novas2025 = chamadasDca.porAno[2025] - dcaAntes[2025];
+  assert.ok(novas2025 >= errosAntes && novas2025 <= errosAntes * 2, `2025: só as consultas que haviam falhado são refeitas (cada uma com até 2 tentativas): ${novas2025} novas para ${errosAntes} com erro na véspera`);
   assert.ok(errosAntes > 0 && errosAntes < 50, 'o teste tem falhas permanentes de propósito');
   assert.equal(metaB.fontes.administracoes.atualizadoEm, meta1.fontes.administracoes.atualizadoEm, 'gestões só mudam na rotina semanal');
   assert.equal(metaB.fontes.series.ok, true);
@@ -1055,7 +1165,7 @@ await caso('anos fechados ficam guardados: no dia seguinte só o ano em curso é
   for (const a of [2023, 2024, 2025]) assert.ok(existsSync(path.join(saida, 'anos', `federais-${a}.json`)), `resumo de ${a} guardado`);
   assert.ok(!existsSync(path.join(saida, 'anos', 'federais-2026.json')), 'o ano em curso nunca é guardado como fechado');
   const novos = lidos.slice(lidosAntes);
-  assert.ok(novos.length > 0 && novos.every((u) => u.includes('-2026.csv')), 'leu só os arquivos de 2026: ' + novos.filter((u) => !u.includes('-2026.csv')).join(', '));
+  assert.ok(novos.length > 0 && novos.every((u) => u.includes('-2026.csv') || u.includes('orgaosDeputados')), 'leu só os arquivos de 2026 (e a lista de membros das comissões, que é um arquivo só): ' + novos.filter((u) => !u.includes('-2026.csv')).join(', '));
   const f = lerSaida('federais.json');
   assert.equal(f.sessoes, 4 * SESSOES);
   assert.equal(metaB.fontes.camara.janela.de, 2023);
@@ -1070,16 +1180,16 @@ await caso('cache de ano fechado: resumo gerado antes do fim do ano ou em format
   assert.equal(guardados[2025].sessoes.length, SESSOES);
   let n = lidos.length;
   await gerarFederais(base);
-  assert.equal(lidos.slice(n).filter((u) => !u.includes('-2026.csv')).length, 0, 'segunda vez não lê os anos fechados');
+  assert.equal(lidos.slice(n).filter((u) => !u.includes('-2026.csv') && !u.includes('orgaosDeputados')).length, 0, 'segunda vez não lê os anos fechados');
   guardados[2025] = { ...guardados[2025], geradoEm: '2025-12-30T10:00:00Z' }; // gerado ainda em 2025: o ano podia não estar fechado
   guardados[2024] = { ...guardados[2024], versao: 0 };
   n = lidos.length;
   await gerarFederais(base);
-  const refeitos = new Set(lidos.slice(n).filter((u) => !u.includes('-2026.csv')).map((u) => u.match(/-(\d{4})\.csv/)[1]));
+  const refeitos = new Set(lidos.slice(n).filter((u) => !u.includes('-2026.csv') && !u.includes('orgaosDeputados')).map((u) => u.match(/-(\d{4})\.csv/)[1]));
   assert.deepEqual([...refeitos].sort(), ['2024', '2025']);
   n = lidos.length;
   await gerarFederais({ ...base, usarCache: false });
-  assert.equal(new Set(lidos.slice(n).map((u) => u.match(/-(\d{4})\.csv/)[1])).size, 4, '"refazer tudo" lê os 4 anos de novo');
+  assert.equal(new Set(lidos.slice(n).filter((u) => !u.includes('orgaosDeputados')).map((u) => u.match(/-(\d{4})\.csv/)[1])).size, 4, '"refazer tudo" lê os 4 anos de novo');
 });
 
 /* ---------- 3ª rodada: Câmara falha, sete dias depois o Tesouro falha ---------- */
@@ -1094,10 +1204,20 @@ await caso('falha da Câmara: marca o erro e mantém o arquivo anterior', () => 
 
 const fontesSemTesouro = { ...fontes, json: async (url) => { if (url.includes('apidatalake')) throw new Error('Tesouro fora do ar'); return fontes.json(url); } };
 const metaD = await atualizar({ fontes: fontesSemTesouro, baixarZip, saida, hoje: new Date('2026-12-01T12:00:00Z'), log });
-await caso('falha do Tesouro depois de 7 dias: mantém as notas de prefeitos que já existiam', () => {
+await caso('falha do Tesouro depois de 7 dias: mantém as notas de governadores que já existiam', () => {
   assert.equal(metaD.fontes.siconfi.ok, false);
-  const rk = lerSaida('ranking-prefeitos.json');
-  assert.ok(rk.comNota > 0, 'as notas anteriores continuam lá');
+  const gv = lerSaida('governadores.json');
+  assert.ok(gv.comNota > 0, 'as notas anteriores continuam lá');
+});
+
+const fontesSemSenado = { ...fontes, json: async (url) => { if (url.includes('legis.senado.leg.br')) throw new Error('Senado fora do ar'); return fontes.json(url); } };
+const metaS = await atualizar({ fontes: fontesSemSenado, baixarZip, saida, hoje: new Date('2026-12-02T12:00:00Z'), log });
+await caso('falha do Senado: marca o erro e mantém a lista de senadores que já estava no ar', () => {
+  assert.equal(metaS.fontes.senado.ok, false);
+  assert.match(metaS.fontes.senado.erro, /fora do ar/);
+  assert.equal(lerSaida('senadores.json').total, 81);
+  assert.equal(metaS.cargos.senadores.total, 81);
+  assert.equal(metaS.fontes.camara.ok, true, 'o resto da rotina segue');
 });
 
 /* ---------- 5ª rodada: janeiro de 2027, governadores novos tomam posse ---------- */
@@ -1111,11 +1231,6 @@ await caso('2027: governadores vêm da eleição de 2026 e ficam sem índice (os
   assert.ok(g.itens.every((x) => /Novo/.test(x.nome)), 'lista nova');
   assert.equal(g.comNota, 0);
   assert.match(g.itens[0].motivo, /mandato atual começou em 2027/); assert.ok(g.itens.every((x) => x.bloqueio === 'mandato-novo'));
-  assert.equal(lerSaida('estaduais-SP.json').ano, 2022, 'deputados estaduais só trocam em fevereiro');
-  const pr = lerSaida('prefeitos-SP.json');
-  assert.equal(pr.ano, 2024);
-  assert.equal(pr.exercicio, 2025, 'em janeiro usa o ano anterior ao último');
-  assert.ok(pr.itens.some((p) => p.nota != null), 'prefeitos eleitos em 2024 já têm resultados de 2025');
 });
 
 console.log(falhas ? `\n${falhas} TESTE(S) FALHARAM` : '\nTUDO OK');

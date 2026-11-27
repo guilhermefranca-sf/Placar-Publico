@@ -9,20 +9,29 @@
    Endereço: #/comparar/{cargo}/{A}/{B}   (A e B: id; fora dos federais, UF.id; "-" = vazio)
    ===================================================================== */
 
-const CARGOS_COMPARAR = [['federais', 'Deputado federal'], ['governadores', 'Governador'], ['prefeitos', 'Prefeito']];
-const chaveDe = (cargo, it) => (cargo === 'federais' ? String(it.id) : `${it.uf}.${it.id}`);
-const ARQUIVO_LISTA = { federais: 'federais.json', governadores: 'governadores.json', prefeitos: 'ranking-prefeitos.json' };
+const CARGOS_COMPARAR = [['federais', 'Deputado federal'], ['senadores', 'Senador'], ['governadores', 'Governador']];
+const chaveDe = (cargo, it) => (cargo === 'federais' || cargo === 'senadores' ? String(it.id) : `${it.uf}.${it.id}`);
+const ARQUIVO_LISTA = { federais: 'federais.json', senadores: 'senadores.json', governadores: 'governadores.json' };
+const compDe = (i, k) => ((i.comp || []).find(c => c.k === k) || {}).s;
 
 /* O que se compara em cada cargo. valor() devolve número ou null; max fixa a escala da barra (senão, o maior dos dois). */
 const LINHAS_COMPARAR = {
   federais: [
     { rot: 'Índice do Placar', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
-    { rot: 'Projetos aprovados (nota do critério)', ic: 'arquivo', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'aprov') || {}).s, fmt: v => dec(v), max: 100 },
-    { rot: 'Presença nas sessões', ic: 'pessoas', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'pres') || {}).s, fmt: v => dec(v) + '%', max: 100 },
-    { rot: 'Votações em que registrou voto', ic: 'urna', origem: 'calculado', natureza: 'proporcional', valor: i => (i.comp.find(c => c.k === 'vot') || {}).s, fmt: v => dec(v) + '%', max: 100 },
+    { rot: 'Projetos aprovados (nota do critério)', ic: 'arquivo', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'aprov'), fmt: v => dec(v), max: 100 },
+    { rot: 'Presença nas sessões do Plenário', ic: 'pessoas', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'pres'), fmt: v => dec(v) + '%', max: 100 },
+    { rot: 'Votações em que registrou voto', ic: 'urna', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'vot'), fmt: v => dec(v) + '%', max: 100 },
+    { rot: 'Presença em comissões permanentes', ic: 'pessoas', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'comis'), fmt: v => dec(v) + '%', max: 100 },
+    { rot: 'Custo para os cofres públicos (por mês de exercício)', ic: 'moedas', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra && i.extra.custo ? i.extra.custo.porMes : null), fmt: v => fmtBRL.format(v) },
     { rot: 'Projetos apresentados (4 anos)', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.projetos : null), fmt: v => fmtNum.format(v) },
-    { rot: 'Cota parlamentar gasta (4 anos)', ic: 'moedas', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra ? i.extra.gasto : null), fmt: v => reaisCurto(v) },
     { rot: 'Anos de exercício efetivo na Câmara', ic: 'relogio', origem: 'calculado', natureza: 'quantitativo', valor: (i, x) => (x.hist ? x.hist.anosEfetivos : null), fmt: v => dec(v, 1) }
+  ],
+  senadores: [
+    { rot: 'Índice do Placar (parcial)', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
+    { rot: 'Critérios que entraram no índice', ic: 'arquivo', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.parcial ? i.parcial.usadas : (i.comp || []).filter(c => c.s != null).length), fmt: v => `${v} de 5` },
+    { rot: 'Projetos aprovados (nota do critério)', ic: 'arquivo', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'aprov'), fmt: v => dec(v), max: 100 },
+    { rot: 'Votações em que registrou voto', ic: 'urna', origem: 'calculado', natureza: 'proporcional', valor: i => compDe(i, 'vot'), fmt: v => dec(v) + '%', max: 100 },
+    { rot: 'Custo para os cofres públicos (por mês de exercício)', ic: 'moedas', origem: 'calculado', natureza: 'quantitativo', valor: i => (i.extra && i.extra.custo ? i.extra.custo.porMes : null), fmt: v => fmtBRL.format(v) }
   ],
   executivos: [
     { rot: 'Índice de serviços públicos (parcial)', ic: 'grafico', origem: 'indice', valor: i => i.nota, fmt: v => dec(v), max: 100 },
@@ -35,18 +44,15 @@ const LINHAS_COMPARAR = {
 };
 
 async function carregarDetalheComparar(cargo, it) {
-  let item = it, hist = null;
+  const item = it;
+  let hist = null;
   if (cargo === 'federais') hist = await lerArquivo(`deputados/${it.id}.json`).catch(() => null);
-  if (cargo === 'prefeitos') {
-    const d = await lerArquivo(`prefeitos-${it.uf}.json`).catch(() => null);
-    item = (d && d.itens.find(x => x.id === it.id)) || it;
-  }
   return { item, hist };
 }
 
 async function viewComparar(partes, token) {
   document.title = 'Comparar · Placar Público';
-  const cargo = CARGOS_COMPARAR.some(([k]) => k === partes[0]) ? partes[0] : 'federais';
+  const cargo = CARGOS_COMPARAR.some(([k]) => k === partes[0] && cargoDisponivel(k)) ? partes[0] : 'federais';
   const [ka, kb] = [partes[1], partes[2]].map(x => (x && x !== '-' ? x : null));
   mostrar(app, html`<h1 class="painel-titulo" style="font-size:1.6rem">Comparativo de desempenho</h1><div class="esq" style="height:120px;margin-top:14px"></div>`);
 
@@ -62,7 +68,7 @@ async function viewComparar(partes, token) {
   const [da, db] = await Promise.all([pa ? carregarDetalheComparar(cargo, pa) : null, pb ? carregarDetalheComparar(cargo, pb) : null]);
   if (token !== rotaToken) return;
   const hrefCom = (a, b) => `#/comparar/${cargo}/${a || '-'}/${b || '-'}`;
-  const linhas = LINHAS_COMPARAR[cargo === 'federais' ? 'federais' : 'executivos'];
+  const linhas = LINHAS_COMPARAR[cargo === 'federais' || cargo === 'senadores' ? cargo : 'executivos'];
   let escolhendo = !pa ? 'a' : !pb ? 'b' : null;
   let consulta = '';
 
@@ -76,7 +82,7 @@ async function viewComparar(partes, token) {
     mostrar(app, html`
       <h1 class="painel-titulo" style="font-size:1.6rem">Comparativo de desempenho</h1>
       <p class="painel-sub">Veja como duas pessoas do mesmo cargo se comparam nos mesmos critérios. Comparar cargos diferentes não faz sentido, porque as regras e os dados são outros.</p>
-      <nav class="chips chips-rolagem" aria-label="Cargo a comparar">${CARGOS_COMPARAR.map(([k, rot]) => html`<a class="chip" href="#/comparar/${k}" aria-current="${k === cargo}">${rot}</a>`)}</nav>
+      <nav class="chips chips-rolagem" aria-label="Cargo a comparar">${CARGOS_COMPARAR.filter(([k]) => cargoDisponivel(k)).map(([k, rot]) => html`<a class="chip" href="#/comparar/${k}" aria-current="${k === cargo}">${rot}</a>`)}</nav>
       <div class="comp-cab">${cabeca(da, 'a')}${cabeca(db, 'b')}</div>
       ${escolhendo ? html`<section class="cartao">
         <h2 class="painel-titulo">Escolher a pessoa ${escolhendo.toUpperCase()}</h2>
@@ -89,7 +95,7 @@ async function viewComparar(partes, token) {
       const lista2 = () => {
         const q = semAcento(consulta.trim());
         const outra = escolhendo === 'a' ? kb : ka;
-        const ach = q.length < 2 ? [] : lista.filter(i => chaveDe(cargo, i) !== outra && (semAcento(i.nome).includes(q) || semAcento(i.municipio || '').includes(q))).slice(0, 8);
+        const ach = q.length < 2 ? [] : lista.filter(i => chaveDe(cargo, i) !== outra && semAcento(i.nome).includes(q)).slice(0, 8);
         mostrar($('#c-res'), ach.length ? html`${ach.map(i => html`<button type="button" class="resultado" data-chave="${chaveDe(cargo, i)}">${avatarHtml(i)}<span><strong>${i.nome}</strong><small>${metaPessoa(i)}</small></span></button>`)}` : html`<p class="nota" style="margin:4px 0 0">${q.length < 2 ? 'Digite pelo menos 2 letras.' : 'Ninguém encontrado.'}</p>`);
       };
       campo.addEventListener('input', e => { consulta = e.target.value; lista2(); });
@@ -166,6 +172,8 @@ async function viewNoticias(token) {
       <li><strong>Histórico de mandatos</strong>: ${f.historico && f.historico.atualizadoEm ? dataHoraBR(f.historico.atualizadoEm) : MSG_INDISPONIVEL}</li>
       <li><strong>TSE (eleitos)</strong>: ${f.tse && f.tse.atualizadoEm ? dataHoraBR(f.tse.atualizadoEm) : MSG_INDISPONIVEL}</li>
       <li><strong>Tesouro Nacional (contas)</strong>: ${f.siconfi && f.siconfi.atualizadoEm ? dataHoraBR(f.siconfi.atualizadoEm) : MSG_INDISPONIVEL}</li>
+      <li><strong>Custo dos deputados (Portal da Transparência da Câmara)</strong>: ${f.custo && f.custo.atualizadoEm ? dataHoraBR(f.custo.atualizadoEm) : MSG_INDISPONIVEL}</li>
+      <li><strong>Brasil no mundo (Banco Mundial)</strong>: ${f.mundo && f.mundo.atualizadoEm ? dataHoraBR(f.mundo.atualizadoEm) : MSG_INDISPONIVEL}</li>
     </ul></div>`);
 }
 
@@ -180,14 +188,15 @@ function viewMais() {
     <div class="menu-lista">
       <a class="menu-item" href="#/metodologia"><span class="mi-ico">${icone('grafico', 22)}</span><span><strong>Metodologia</strong><span>Como o índice é calculado e o que ele não mede.</span></span><span class="ico-seta">${icone('seta', 18)}</span></a>
       <a class="menu-item" href="#/fontes"><span class="mi-ico">${icone('arquivo', 22)}</span><span><strong>Fontes dos dados</strong><span>De onde vem cada número e quando foi atualizado.</span></span><span class="ico-seta">${icone('seta', 18)}</span></a>
+      <a class="menu-item" href="#/fontes-independentes"><span class="mi-ico">${icone('olho', 22)}</span><span><strong>Fontes independentes</strong><span>Institutos e organizações que complementam os dados oficiais, e quando foram consultados.</span></span><span class="ico-seta">${icone('seta', 18)}</span></a>
       <a class="menu-item" href="#/verificacao"><span class="mi-ico">${icone('escudo', 22)}</span><span><strong>Como verificamos</strong><span>Regras para nada falso aparecer como se fosse oficial.</span></span><span class="ico-seta">${icone('seta', 18)}</span></a>
     </div>
     <h2 class="painel-titulo" style="margin-top:28px">Em preparação</h2>
     <p class="painel-sub">O que ainda não está no ar, e por quê. Nada disso é mostrado com número inventado enquanto não houver fonte oficial integrada.</p>
     <div class="cartoes-breve">${CARGOS_EM_BREVE.map(([t, d]) => html`<div class="breve">${icone('cadeado', 22)}<div><strong>${t}</strong>${d}</div></div>`)}
       <div class="breve">${icone('cadeado', 22)}<div><strong>Emendas parlamentares</strong>Ligação com o Portal da Transparência.</div></div>
-      <div class="breve">${icone('cadeado', 22)}<div><strong>Obras e infraestrutura, cobertura vacinal, leitos, gasto mínimo em saúde e educação</strong>Ainda sem fonte aberta integrada; por isso a infraestrutura fica "sem fonte" no índice de serviços públicos.</div></div>
-      <div class="breve">${icone('cadeado', 22)}<div><strong>Deputados estaduais</strong>Índice parcial só onde a Assembleia publica dados que o Placar lê (hoje, a verba de gabinete de São Paulo). As demais ficam sem índice, com o motivo.</div></div>
+      <div class="breve">${icone('cadeado', 22)}<div><strong>Infraestrutura e obras</strong>Saíram das abas do presidente e dos governadores: não há indicador de resultado com fonte aberta confirmada. Podem voltar, por exemplo, como ranking mundial de logística.</div></div>
+      <div class="breve">${icone('cadeado', 22)}<div><strong>Prefeitos, vereadores e deputados estaduais</strong>Saíram do Placar na versão 8. Uma página própria para eles pode vir mais adiante.</div></div>
     </div>
     <p class="nota">Aplicativo independente, sem vínculo com governos, partidos ou órgãos públicos.</p>`);
 }

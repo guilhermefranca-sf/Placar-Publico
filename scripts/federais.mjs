@@ -7,13 +7,15 @@
 
 import { percorrerCsv, criarPercentil, arredondar, dataBR, reais, emLotes, normalizar } from './util.mjs';
 import { METODO, mediaPonderada, atribuirPosicoes, pesoDe } from './nota.mjs';
+import { listarPermanentes, criarColetorDeEventos, ligarReunioesAosOrgaos, carregarMembros, contarComissoes } from './comissoes.mjs';
+import { somarCusto, NAO_MEDIDOS } from './custo.mjs';
 
 export const API = 'https://dadosabertos.camara.leg.br/api/v2';
 export const ARQUIVOS = 'https://dadosabertos.camara.leg.br/arquivos';
 export const SIGLAS_PROJETO = new Set(['PL', 'PLP', 'PEC', 'PDL', 'PRC', 'MPV', 'PLV', 'PLN', 'PFC']);
 export const JANELA_ANOS = METODO.federais.janelaAnos;
 const MIN_VOTANTES_NOMINAL = 100; // uma votação nominal do Plenário tem centenas de votos
-const VERSAO_ANO = 2;             // muda quando o formato do arquivo de cada ano muda (2: projetos com situação e número de autores)
+const VERSAO_ANO = 3;             // muda quando o formato do arquivo de cada ano muda (2: projetos com situação e número de autores; 3: presença em comissões, sem a cota do arquivo anual)
 const DIAS_ENTRE_LEITURAS_DA_SITUACAO = 7; // a situação de um projeto muda com o tempo: os anos fechados são relidos a cada 7 dias
 const DIA = 86400000;
 
@@ -28,16 +30,12 @@ export async function listarDeputados(json) {
   return todos;
 }
 
-const decimal = (s) => {
-  const n = parseFloat(String(s || '0').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-};
-
 /** Os anos civis avaliados: o ano em curso e os 3 anteriores. */
 export const anosDaJanela = (ano, janela = JANELA_ANOS) => Array.from({ length: janela }, (_, k) => ano - janela + 1 + k);
 
 /** Um arquivo de ano fechado só vale se foi gerado depois que o ano terminou e no formato de hoje. */
-const anoFechadoValido = (ag, a) => ag && ag.versao === VERSAO_ANO && ag.ano === a && String(ag.geradoEm || '').slice(0, 4) > String(a);
+const anoFechadoValido = (ag, a, comissoesDisponiveis = true) => ag && ag.versao === VERSAO_ANO && ag.ano === a && String(ag.geradoEm || '').slice(0, 4) > String(a)
+  && (!comissoesDisponiveis || ag.comisOk === true); // um ano guardado sem as comissões é refeito assim que a lista de comissões estiver disponível
 
 /**
  * Situação atual de um projeto, vista pelo texto que a Câmara publica em "ultimoStatus_descricaoSituacao".
@@ -134,15 +132,17 @@ export function resumirProjetos(porAno, id, desde) {
  *   nominais  datas das votações nominais do Plenário (em ordem)
  *   votou     { idDeputado: "0101..." }  1 = registrou voto
  *   projetos  { idDeputado: [[data, situação, nº de autores]] }  projetos e propostas de autoria (não conta requerimento, indicação, emenda)
- *   gasto     { idDeputado: reais }      cota parlamentar (valor do documento menos glosa)
+ *   comis     { reunioes: [[data, [idOrgao]]], presencas: { idDeputado: "0101..." } }  reuniões deliberativas de comissões permanentes
  * `completo` guarda também o que o "Como votou?" precisa (ids, placar, voto de cada um). Só vale para o ano em curso.
  */
-export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = false }) {
-  // 1. Sessões deliberativas do Plenário já encerradas
+export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = false, permanentes = null }) {
+  // 1. Sessões deliberativas do Plenário já encerradas (e, de passagem, as reuniões deliberativas das comissões)
   const sessoes = new Map(); // idEvento -> data (AAAA-MM-DD)
+  const coletor = criarColetorDeEventos();
   {
     const texto = await fontes.texto(`${ARQUIVOS}/eventos/csv/eventos-${ano}.csv`);
     percorrerCsv(texto, (l, ix) => {
+      if (permanentes) coletor.aoLerEvento(l, ix);
       if (l[ix.descricaoTipo] !== 'Sessão Deliberativa') return;
       if (!String(l[ix.situacao]).startsWith('Encerrada')) return;
       if (!/Plen/i.test(l[ix['localCamara.nome']] || '')) return;
@@ -152,16 +152,28 @@ export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = 
   const ordemSessoes = [...sessoes.entries()].sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : a[0] < b[0] ? -1 : 1));
   const posSessao = new Map(ordemSessoes.map(([id], k) => [id, k]));
 
-  // 2. Presença de cada deputado nessas sessões
+  // 1b. Quais dessas reuniões de comissão são de comissões permanentes
+  let reunioesCom = null;
+  if (permanentes) reunioesCom = ligarReunioesAosOrgaos(await fontes.texto(`${ARQUIVOS}/eventosOrgaos/csv/eventosOrgaos-${ano}.csv`), coletor, permanentes);
+
+  // 2. Presença de cada deputado nessas sessões (e nas reuniões de comissão)
   const presencas = new Map(); // idDeputado -> Set(posição)
+  const presencasCom = new Map(); // idDeputado -> Set(posição da reunião de comissão)
   {
     const texto = await fontes.texto(`${ARQUIVOS}/eventosPresencaDeputados/csv/eventosPresencaDeputados-${ano}.csv`);
     percorrerCsv(texto, (l, ix) => {
-      const k = posSessao.get(l[ix.idEvento]);
-      if (k === undefined) return;
       const d = l[ix.idDeputado];
-      if (!presencas.has(d)) presencas.set(d, new Set());
-      presencas.get(d).add(k);
+      const k = posSessao.get(l[ix.idEvento]);
+      if (k !== undefined) {
+        if (!presencas.has(d)) presencas.set(d, new Set());
+        presencas.get(d).add(k);
+        return;
+      }
+      const c = reunioesCom ? reunioesCom.posicao.get(l[ix.idEvento]) : undefined;
+      if (c !== undefined) {
+        if (!presencasCom.has(d)) presencasCom.set(d, new Set());
+        presencasCom.get(d).add(c);
+      }
     });
   }
 
@@ -208,18 +220,6 @@ export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = 
   // 4. Projetos e propostas de autoria, com a situação atual de cada um
   const { projetos, statusOk } = await lerProjetosDoAno({ fontes, ano });
 
-  // 5. Cota parlamentar (valor do documento menos a glosa)
-  const gastos = new Map(); // idDeputado -> total
-  {
-    const texto = await fontes.cotas(ano);
-    percorrerCsv(texto, (l, ix) => {
-      if (String(l[ix.numAno]) !== String(ano)) return;
-      const d = l[ix.ideCadastro];
-      if (!d) return;
-      gastos.set(d, (gastos.get(d) || 0) + decimal(l[ix.vlrDocumento]) - decimal(l[ix.vlrGlosa]));
-    });
-  }
-
   const bits = (conjunto, n) => {
     const v = new Array(n).fill('0');
     for (const k of conjunto) v[k] = '1';
@@ -247,7 +247,11 @@ export async function lerAnoCamara({ fontes, ano, hoje = new Date(), completo = 
     projetos,
     statusOk,
     statusEm: hoje.toISOString(),
-    gasto: Object.fromEntries([...gastos].map(([d, v]) => [d, Math.round(v * 100) / 100]))
+    comisOk: !!reunioesCom,
+    comis: reunioesCom ? {
+      reunioes: reunioesCom.lista.map((r) => [r.data, r.orgaos]),
+      presencas: Object.fromEntries([...presencasCom].map(([d, set]) => [d, bits(set, reunioesCom.lista.length)]))
+    } : null
   };
   return { agregado, extras: completo ? { nominais, detalhesVot, tipoDoVoto } : null };
 }
@@ -273,24 +277,60 @@ function fraseAprovados(e, pAprov, desde) {
   return `${plural(p.aprovadosCasa, 'projeto aprovado', 'projetos aprovados')} pelo Plenário da Câmara de ${plural(p.apresentados, 'apresentado', 'apresentados')} desde ${desde} (${p.aprovadosPorAno.toLocaleString('pt-BR')} por ano de exercício; ${plural(p.leis, 'virou lei', 'viraram lei')}), mais do que ${Math.floor(pAprov * 100)}% dos deputados com histórico suficiente.`;
 }
 
+/** Frase que explica o critério "presença em comissões" de um deputado. */
+export function fraseComissoes(e, desde, motivoGeral = null) {
+  const c = e.comissoes;
+  if (!c) return `${motivoGeral ? 'A lista de comissões permanentes e de seus membros não pôde ser lida nesta atualização' : 'Este critério ainda não foi calculado'}; ficou sem dado. Isso não significa falta de presença.`;
+  if (!c.suficiente) return `Só ${plural(c.esperadas, 'reunião deliberativa esperada', 'reuniões deliberativas esperadas')} em comissões permanentes desde ${desde}; o mínimo é ${METODO.federais.minReunioesComissao}. Dado não encontrado ou não confirmado: poucas reuniões não são nota baixa. Até agora: presente em ${c.presentes}.`;
+  const lic = c.licenca ? ` Não conta ${plural(c.licenca, 'reunião', 'reuniões')} em que estava licenciado(a) ou afastado(a).` : '';
+  return `Presente em ${c.presentes} de ${plural(c.esperadas, 'reunião deliberativa', 'reuniões deliberativas')} de comissões permanentes em que era titular, desde ${desde} (${Math.round((c.presentes / c.esperadas) * 100)}%).${lic} A Câmara não publica quem substituiu o titular numa reunião: a falta do titular substituído pode contar contra ele.`;
+}
+
+const brl = (v) => reais(v);
+
+/** Frase que explica o critério "custo para os cofres públicos" de um deputado. */
+export function fraseCusto(e, pCusto, nComparados, desde, MSG) {
+  const c = e.custo;
+  if (!c) return `${MSG}. ${e.custoMotivo || 'O Portal da Transparência da Câmara não foi lido para este deputado.'} Isso não significa custo zero.`;
+  if (c.poucosMeses) return `Só ${arredondar(c.meses, 1).toLocaleString('pt-BR')} meses de exercício no período; o custo por mês só é comparado a partir de ${METODO.federais.minMesesCusto} meses. Até agora: ${brl(c.total)}.`;
+  const k = c.componentes;
+  const partes = [`cota parlamentar ${brl(k.cota)}`, `verba de gabinete ${brl(k.verba)}`, `auxílio-moradia ${brl(k.moradia)}`, `viagens oficiais ${brl(k.viagens)}`];
+  const menos = Math.floor((1 - pCusto) * 100);
+  return `Custou ${brl(c.total)} aos cofres públicos desde ${desde} (${brl(c.porMes)} por mês de exercício), sem contar o subsídio: ${partes.join('; ')}. Custou menos por mês do que ${menos}% dos ${nComparados.toLocaleString('pt-BR')} deputados comparados em todo o país. Não medidos: ${NAO_MEDIDOS.join('; ')}.`;
+}
+
 /**
- * fontes = { json(url), texto(url), cotas(ano) }  (assim dá para testar sem internet)
+ * fontes = { json(url), texto(url) }  (assim dá para testar sem internet)
  * ano    = último ano da janela (o ano em curso). janela = quantos anos civis avaliar (4).
  * cache  = { ler(ano), gravar(ano, objeto) }  guarda o resumo dos anos fechados. usarCache=false refaz todos.
  * pausasDe(id) = [{ ini, fim }] licenças e afastamentos registrados no histórico da Câmara. Esses períodos
  *                não contam contra o deputado (nem sessões, nem votações, nem meses de gasto).
  */
-export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = new Date(), cache = null, usarCache = true, pausasDe = () => [], aoAndar = () => {} }) {
+export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = new Date(), cache = null, usarCache = true, pausasDe = () => [], custoDocs = null, aoAndar = () => {} }) {
   const deputados = await listarDeputados(fontes.json);
   if (deputados.length < 100) throw new Error(`A Câmara devolveu só ${deputados.length} deputados; parece falha da API.`);
 
-  // Um resumo por ano. Os fechados vêm do arquivo guardado; o ano em curso é sempre lido de novo.
   const anos = anosDaJanela(ano, janela);
+
+  // Comissões permanentes e membros titulares. Se qualquer uma das duas leituras falhar, o critério "presença em comissões"
+  // fica sem dado para todos (e o resto do índice segue normalmente). Nada é preenchido por estimativa.
+  let permanentes = null, membros = null, motivoComissoes = null;
+  try {
+    permanentes = await listarPermanentes(fontes.json);
+    membros = await carregarMembros(fontes, anos[0], anos[anos.length - 1]);
+    aoAndar(`comissões: ${permanentes.size} comissões permanentes; titulares de ${membros.porDep.size} deputados`);
+  } catch (e) {
+    permanentes = null; membros = null;
+    motivoComissoes = String(e.message).slice(0, 200);
+    aoAndar(`comissões: não consegui montar a lista (${motivoComissoes}); o critério fica sem dado nesta rodada`);
+  }
+
+  // Um resumo por ano. Os fechados vêm do arquivo guardado; o ano em curso é sempre lido de novo.
   const porAno = [];
   let atual = null;
   for (const a of anos) {
     let ag = a < ano && usarCache && cache ? cache.ler(a) : null;
-    if (!anoFechadoValido(ag, a)) ag = null;
+    if (!anoFechadoValido(ag, a, !!permanentes)) ag = null;
     if (ag) {
       aoAndar(`${a}: usando o resumo guardado`);
       // Presença, votos e cota de um ano fechado não mudam, mas a situação dos projetos sim (um projeto de 2023 pode ser aprovado hoje).
@@ -305,7 +345,7 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
       }
     } else {
       aoAndar(`${a}: lendo os arquivos da Câmara`);
-      const r = await lerAnoCamara({ fontes, ano: a, hoje, completo: a === ano });
+      const r = await lerAnoCamara({ fontes, ano: a, hoje, completo: a === ano, permanentes });
       ag = r.agregado;
       if (a === ano) atual = r.extras;
       if (a < ano && cache) cache.gravar(a, ag);
@@ -318,6 +358,10 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
   const marcas = (id, campo, tamanho) => porAno.map((a) => (a[campo][id] || '0'.repeat(tamanho(a)))).join('');
   const presencaDe = (id) => marcas(id, 'presencas', (a) => a.sessoes.length);
   const votoDe = (id) => marcas(id, 'votou', (a) => a.nominais.length);
+  // Comissões: só há dado se a lista de comissões e os membros foram lidos e todos os anos têm as reuniões.
+  const comisAtivo = !!(permanentes && membros && porAno.every((a) => a.comisOk && a.comis));
+  const reunioesCom = comisAtivo ? porAno.flatMap((a) => a.comis.reunioes) : [];
+  const comisDe = (id) => porAno.map((a) => (a.comis && a.comis.presencas[id]) || '0'.repeat(a.comis ? a.comis.reunioes.length : 0)).join('');
 
   const hojeISO = hoje.toISOString().slice(0, 10);
   const decimoDia = sessoes[9] || sessoes[sessoes.length - 1] || hojeISO;
@@ -352,7 +396,18 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
     const meses = Math.max(1, ((new Date(hojeISO) - new Date(desde)) / DIA - diasPausa) / 30.44);
     const proj = resumirProjetos(porAno, id, desde);
     const nProj = proj.apresentados;
-    const gasto = Math.max(0, porAno.reduce((n, a) => n + (a.gasto[id] || 0), 0));
+    // Presença em comissões permanentes (só reuniões em que era titular da comissão; licença não conta contra).
+    let comis = null;
+    if (comisAtivo) {
+      const c = contarComissoes({ reunioes: reunioesCom, marcas: comisDe(id), periodos: membros.porDep.get(id) || [], desde, emPausa });
+      comis = { ...c, suficiente: c.esperadas >= METODO.federais.minReunioesComissao };
+    }
+    // Custo para os cofres públicos: cota + verba de gabinete + auxílio-moradia + viagens oficiais, do Portal da Câmara.
+    let custo = null;
+    if (custoDocs) {
+      const r = somarCusto(custoDocs, id, Number(desde.slice(0, 4)), ano);
+      custo = r.erro ? { erro: r.erro } : { ...r, total: Math.max(0, r.total) };
+    }
     return {
       ...base,
       desde,
@@ -361,9 +416,18 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
       _vot: votacoesDesde ? votei / votacoesDesde : null,
       // Critério "projetos aprovados": só com situação conhecida e pelo menos 12 meses de exercício (histórico suficiente).
       _aprovAno: proj.statusOk && meses >= METODO.federais.minMesesAprovados ? proj.aprovadosCasa / (meses / 12) : null,
-      _cotaMes: gasto / meses,
+      _comis: comis && comis.suficiente ? comis.presentes / comis.esperadas : null,
+      _custoMes: custo && !custo.erro && meses >= METODO.federais.minMesesCusto ? custo.total / meses : null,
       extra: {
-        sessoes: [presentes, sessoesDesde], votos: [votei, votacoesDesde], projetos: nProj, gasto: Math.round(gasto), meses: arredondar(meses, 1),
+        sessoes: [presentes, sessoesDesde], votos: [votei, votacoesDesde], projetos: nProj, meses: arredondar(meses, 1),
+        comissoes: comis ? { esperadas: comis.esperadas, presentes: comis.presentes, suficiente: comis.suficiente, ...(comis.licenca ? { licenca: comis.licenca } : {}) } : null,
+        custo: custo && !custo.erro ? {
+          total: Math.round(custo.total), porMes: Math.round(custo.total / meses),
+          componentes: Object.fromEntries(Object.entries(custo.componentes).map(([k, v]) => [k, Math.round(v)])),
+          anos: Object.fromEntries(Object.entries(custo.anos).map(([a, v]) => [a, { cota: Math.round(v.cota), verba: Math.round(v.verba), moradia: Math.round(v.moradia), viagens: Math.round(v.viagens), semLancamento: v.sr }])),
+          meses: arredondar(meses, 1), ...(meses < METODO.federais.minMesesCusto ? { poucosMeses: true } : {})
+        } : null,
+        custoMotivo: custo && custo.erro ? custo.erro : (!custoDocs ? 'A leitura do Portal da Transparência da Câmara ainda não foi feita.' : undefined),
         proj: {
           apresentados: proj.apresentados, aprovadosCasa: proj.aprovadosCasa, leis: proj.leis, comissao: proj.comissao,
           arquivados: proj.arquivados, tramitacao: proj.tramitacao, outros: proj.outros, semSituacao: proj.semSituacao,
@@ -377,23 +441,21 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
     };
   });
 
-  // 7. Comparações (projetos aprovados entre todos; cota entre colegas do mesmo estado)
+  // 7. Comparações: projetos aprovados e custo entre TODOS os deputados do país (o custo não é comparado só dentro do estado)
   const elegiveis = itens.filter((i) => i._pres != null);
   const pctAprov = criarPercentil(elegiveis.filter((i) => i._aprovAno != null).map((i) => i._aprovAno));
-  const porUf = new Map();
-  for (const i of elegiveis) {
-    if (!porUf.has(i.uf)) porUf.set(i.uf, []);
-    porUf.get(i.uf).push(i._cotaMes);
-  }
-  const pctCota = new Map([...porUf].map(([uf, v]) => [uf, criarPercentil(v)]));
+  const comCusto = elegiveis.filter((i) => i._custoMes != null);
+  const pctCusto = criarPercentil(comCusto.map((i) => i._custoMes));
+  const MSG = 'Dado não encontrado ou não confirmado';
 
   for (const i of elegiveis) {
     const pAprov = i._aprovAno != null ? pctAprov(i._aprovAno) : null;
-    const pCota = pctCota.get(i.uf)(i._cotaMes);
+    const pCusto = i._custoMes != null ? pctCusto(i._custoMes) : null;
     const sPres = arredondar(i._pres * 100, 1);
     const sVot = i._vot == null ? null : arredondar(i._vot * 100, 1);
     const sAprov = pAprov == null ? null : arredondar(pAprov * 100, 1);
-    const sCota = arredondar((1 - pCota) * 100, 1);
+    const sComis = i._comis == null ? null : arredondar(i._comis * 100, 1);
+    const sCusto = pCusto == null ? null : arredondar((1 - pCusto) * 100, 1);
     const e = i.extra;
     const desde = dataBR(i.desde);
     const lic = e.licenca;
@@ -402,12 +464,13 @@ export async function gerarFederais({ fontes, ano, janela = JANELA_ANOS, hoje = 
       { k: 'pres', s: sPres, f: `Presente em ${e.sessoes[0]} de ${e.sessoes[1]} sessões deliberativas do Plenário desde ${desde} (${Math.round(i._pres * 100)}%).${notaLic(lic && lic.sessoes, ['sessão', 'sessões'])}` },
       { k: 'vot', s: sVot, f: e.votos[1] ? `Registrou voto em ${e.votos[0]} de ${e.votos[1]} votações nominais do Plenário desde ${desde}.${notaLic(lic && lic.votacoes, ['votação', 'votações'])}` : 'Ainda não houve votação nominal no período.' },
       { k: 'aprov', s: sAprov, f: fraseAprovados(e, pAprov, desde) },
-      { k: 'cota', s: sCota, f: `Gastou ${reais(e.gasto)} da cota desde ${desde} (${reais(e.gasto / e.meses)} por mês de exercício), menos do que ${Math.floor((1 - pCota) * 100)}% dos colegas de ${i.uf}.` }
+      { k: 'comis', s: sComis, f: fraseComissoes(e, desde, motivoComissoes) },
+      { k: 'custo', s: sCusto, f: fraseCusto(e, pCusto, comCusto.length, desde, MSG) }
     ];
-    i.nota = mediaPonderada(i.comp.map((c) => ({ peso: pesoDe('federais', c.k), s: c.s })), 3);
+    i.nota = mediaPonderada(i.comp.map((c) => ({ peso: pesoDe('federais', c.k), s: c.s })), METODO.federais.minCriterios);
     if (i.nota == null) i.motivo = 'Dados insuficientes para calcular o índice.';
   }
-  for (const i of itens) { delete i._pres; delete i._vot; delete i._aprovAno; delete i._cotaMes; if (i.obs === undefined) delete i.obs; }
+  for (const i of itens) { delete i._pres; delete i._vot; delete i._aprovAno; delete i._comis; delete i._custoMes; if (i.obs === undefined) delete i.obs; }
 
   const comNota = atribuirPosicoes(itens);
   const notas = itens.filter((i) => i.nota != null).map((i) => i.nota);
